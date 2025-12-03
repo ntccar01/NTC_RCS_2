@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>點名神器 7.0 雲端漫遊版</title>
+    
+    <!-- 1. 載入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 2. 載入 React 核心 -->
+    <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+    
+    <!-- 3. 載入 Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <style>
+        @keyframes slide-in { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+        .animate-slide-in { animation: slide-in 0.3s ease-out; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Loading Spinner */
+        .spinner { border: 3px solid rgba(255,255,255,0.3); border-radius: 50%; border-top: 3px solid #fff; width: 20px; height: 20px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        // --- 內建圖示庫 ---
+        const IconBase = ({ children, size = 20, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{children}</svg>
+        );
+        const Icons = {
+            Plus: (p) => <IconBase {...p}><path d="M5 12h14"/><path d="M12 5v14"/></IconBase>,
+            Trash2: (p) => <IconBase {...p}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></IconBase>,
+            Copy: (p) => <IconBase {...p}><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></IconBase>,
+            UserCheck: (p) => <IconBase {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></IconBase>,
+            UserX: (p) => <IconBase {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" x2="22" y1="8" y2="13"/><line x1="22" x2="17" y1="8" y2="13"/></IconBase>,
+            Clock: (p) => <IconBase {...p}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></IconBase>,
+            Menu: (p) => <IconBase {...p}><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></IconBase>,
+            BookOpen: (p) => <IconBase {...p}><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></IconBase>,
+            Check: (p) => <IconBase {...p}><polyline points="20 6 9 17 4 12"/></IconBase>,
+            X: (p) => <IconBase {...p}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></IconBase>,
+            Upload: (p) => <IconBase {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></IconBase>,
+            List: (p) => <IconBase {...p}><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></IconBase>,
+            LogOut: (p) => <IconBase {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></IconBase>,
+            Thermometer: (p) => <IconBase {...p}><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></IconBase>,
+            Briefcase: (p) => <IconBase {...p}><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></IconBase>,
+            Coffee: (p) => <IconBase {...p}><path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><line x1="6" x2="6" y1="2" y2="4"/><line x1="10" x2="10" y1="2" y2="4"/><line x1="14" x2="14" y1="2" y2="4"/></IconBase>,
+            Cloud: (p) => <IconBase {...p}><path d="M17.5 19c0-3.037-2.463-5.5-5.5-5.5S6.5 15.963 6.5 19"/><path d="M17.5 19c2.485 0 4.5-2.015 4.5-4.5S19.985 10 17.5 10c-.15 0-.298.008-.445.023A6.5 6.5 0 0 0 5.055 13.5c-.015.163-.055.322-.055.485C5 16.5 7 19 9.5 19h8z"/></IconBase>,
+            CloudUpload: (p) => <IconBase {...p}><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></IconBase>,
+            CloudDownload: (p) => <IconBase {...p}><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m8 17 4 4 4-4"/></IconBase>,
+            Settings: (p) => <IconBase {...p}><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></IconBase>,
+            ShieldCheck: (p) => <IconBase {...p}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></IconBase>,
+            LayoutGrid: (p) => <IconBase {...p}><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></IconBase>,
+            Monitor: (p) => <IconBase {...p}><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></IconBase>,
+            Save: (p) => <IconBase {...p}><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></IconBase>,
+            Download: (p) => <IconBase {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></IconBase>
+        };
+
+        const STATUS_CONFIG = {
+            PRESENT: { id: 'PRESENT', label: '出席', color: 'bg-green-100 text-green-700 border-green-300', icon: <Icons.UserCheck size={18} /> },
+            ABSENT: { id: 'ABSENT', label: '缺席', color: 'bg-red-100 text-red-700 border-red-300', icon: <Icons.UserX size={18} /> },
+            LATE: { id: 'LATE', label: '遲到', color: 'bg-yellow-100 text-yellow-700 border-yellow-300', icon: <Icons.Clock size={18} /> },
+            LEAVE_EARLY: { id: 'LEAVE_EARLY', label: '早退', color: 'bg-orange-100 text-orange-700 border-orange-300', icon: <Icons.LogOut size={18} /> },
+            SICK: { id: 'SICK', label: '病假', color: 'bg-rose-100 text-rose-700 border-rose-300', icon: <Icons.Thermometer size={18} /> },
+            PERSONAL: { id: 'PERSONAL', label: '事假', color: 'bg-purple-100 text-purple-700 border-purple-300', icon: <Icons.Coffee size={18} /> },
+            OFFICIAL: { id: 'OFFICIAL', label: '公假', color: 'bg-blue-100 text-blue-700 border-blue-300', icon: <Icons.Briefcase size={18} /> },
+        };
+        const DEFAULT_PERIODS = ['早自習', '第一節', '第二節', '第三節', '第四節', '午休', '第五節', '第六節', '第七節', '第八節'];
+
+        function RollCallApp() {
+            // Data State
+            const [courses, setCourses] = useState(() => JSON.parse(localStorage.getItem('rc_courses_v5') || '[{"id":"default","name":"預設課程","students":[],"records":{}}]'));
+            const [periodConfig, setPeriodConfig] = useState(() => JSON.parse(localStorage.getItem('rc_periods_config') || JSON.stringify(DEFAULT_PERIODS)));
+            const [activeCourseId, setActiveCourseId] = useState(() => localStorage.getItem('rc_active_course_id') || courses[0]?.id);
+            const [scriptUrl, setScriptUrl] = useState(() => localStorage.getItem('rc_google_script_url') || '');
+
+            // UI State
+            const [currentDate, setCurrentDate] = useState(new Date().toISOString().split('T')[0]);
+            const [currentPeriod, setCurrentPeriod] = useState(periodConfig[1] || '第一節');
+            const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+            const [modalType, setModalType] = useState(null);
+            const [activeStudentForMenu, setActiveStudentForMenu] = useState(null);
+            const [inputText, setInputText] = useState('');
+            const [notification, setNotification] = useState('');
+            const [isUploading, setIsUploading] = useState(false);
+            const [isSyncing, setIsSyncing] = useState(false);
+
+            const activeCourse = useMemo(() => courses.find(c => c.id === activeCourseId) || courses[0], [courses, activeCourseId]);
+
+            // Persistence
+            useEffect(() => localStorage.setItem('rc_courses_v5', JSON.stringify(courses)), [courses]);
+            useEffect(() => localStorage.setItem('rc_active_course_id', activeCourseId), [activeCourseId]);
+            useEffect(() => localStorage.setItem('rc_periods_config', JSON.stringify(periodConfig)), [periodConfig]);
+            useEffect(() => localStorage.setItem('rc_google_script_url', scriptUrl), [scriptUrl]);
+
+            // Logic
+            const updateActiveCourse = (updater) => setCourses(prev => prev.map(c => c.id === activeCourse.id ? updater(c) : c));
+            
+            const setStudentStatus = (studentId, statusId) => {
+                updateActiveCourse(course => {
+                    const dayRec = course.records[currentDate] || {};
+                    const periodRec = dayRec[currentPeriod] || {};
+                    return { ...course, records: { ...course.records, [currentDate]: { ...dayRec, [currentPeriod]: { ...periodRec, [studentId]: statusId } } } };
+                });
+                if (activeStudentForMenu) setActiveStudentForMenu(null);
+            };
+
+            const quickToggle = (studentId) => {
+                const currentStatus = activeCourse.records[currentDate]?.[currentPeriod]?.[studentId] || 'PRESENT';
+                setStudentStatus(studentId, currentStatus === 'PRESENT' ? 'ABSENT' : 'PRESENT');
+            };
+
+            const deleteStudent = (studentId) => {
+                if(!window.confirm(`確定要將「${activeStudentForMenu.name}」從名單中移除嗎？\n(此動作無法復原，但可以重新匯入)`)) return;
+                
+                updateActiveCourse(course => ({
+                    ...course,
+                    students: course.students.filter(s => s.id !== studentId)
+                }));
+                setActiveStudentForMenu(null);
+                showToast('已移除學生');
+            };
+
+            // --- Cloud Logic ---
+            const handleBackupReport = async () => {
+                if (!scriptUrl) { setModalType('CLOUD_SETUP'); return; }
+                if (!window.confirm(`確定備份「${activeCourse.name} ${currentDate}」報表至雲端？`)) return;
+                setIsUploading(true);
+                const sorted = getSortedStudents();
+                const records = activeCourse.records[currentDate]?.[currentPeriod] || {};
+                const payload = {
+                    type: 'backup_report',
+                    course: activeCourse.name, date: currentDate, period: currentPeriod,
+                    students: sorted.map(s => ({ number: s.number, name: s.name, statusLabel: STATUS_CONFIG[records[s.id] || 'PRESENT'].label }))
+                };
+                try {
+                    await fetch(scriptUrl, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    showToast('☁️ 報表已備份 (請查看試算表)');
+                } catch (e) { showToast('❌ 備份失敗'); } finally { setIsUploading(false); }
+            };
+
+            const handleCloudSyncUpload = async () => {
+                if (!scriptUrl) { setModalType('CLOUD_SETUP'); return; }
+                if (!window.confirm("⚠️ 確定要將「目前所有的課程、學生、紀錄」上傳覆蓋雲端存檔嗎？\n(這將作為其他裝置還原的依據)")) return;
+                setIsSyncing(true);
+                const payload = {
+                    type: 'sync_upload',
+                    payload: { courses, periodConfig }
+                };
+                try {
+                    await fetch(scriptUrl, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    showToast('⬆️ 設定已上傳至雲端！');
+                } catch (e) { showToast('❌ 上傳失敗'); } finally { setIsSyncing(false); }
+            };
+
+            const handleCloudSyncDownload = async () => {
+                if (!scriptUrl) { setModalType('CLOUD_SETUP'); return; }
+                if (!window.confirm("⚠️ 警告：確定要從雲端還原資料嗎？\n(這將會「清除並覆蓋」您目前手機上的所有資料！)")) return;
+                setIsSyncing(true);
+                try {
+                    const response = await fetch(scriptUrl + '?action=download'); // Trigger doGet
+                    const data = await response.json();
+                    
+                    if (data.result === 'empty') {
+                        showToast('☁️ 雲端尚無備份資料');
+                    } else if (data.courses) {
+                        setCourses(data.courses);
+                        if (data.periodConfig) setPeriodConfig(data.periodConfig);
+                        // Reset active ID if needed
+                        if (!data.courses.find(c => c.id === activeCourseId)) {
+                            setActiveCourseId(data.courses[0].id);
+                        }
+                        showToast('⬇️ 資料還原成功！');
+                        setIsSidebarOpen(false);
+                    } else {
+                        showToast('❌ 雲端資料格式錯誤');
+                    }
+                } catch (e) { 
+                    console.error(e);
+                    // Google Apps Script doGet CORS can be tricky. If direct JSON fails, usually implies permission or URL issue.
+                    showToast('❌ 下載失敗 (請檢查網址或權限)'); 
+                } finally { setIsSyncing(false); }
+            };
+
+            // Utils
+            const showToast = (msg) => { setNotification(msg); setTimeout(() => setNotification(''), 3000); };
+            const closeModal = () => { setModalType(null); setInputText(''); };
+            const getSortedStudents = () => [...activeCourse.students].sort((a, b) => (parseInt(a.number)||999) - (parseInt(b.number)||999));
+            const getStats = () => {
+                const sorted = getSortedStudents();
+                const rec = activeCourse.records[currentDate]?.[currentPeriod] || {};
+                let p=0, a=0, o=0;
+                sorted.forEach(s => { const st = rec[s.id] || 'PRESENT'; if(st==='PRESENT')p++; else if(st==='ABSENT')a++; else o++; });
+                return { p, a, o, t: sorted.length };
+            };
+            const handleModalSubmit = () => {
+                if(modalType !== 'CLOUD_SETUP' && !inputText.trim()) return;
+                if(modalType === 'IMPORT') {
+                    const newS = inputText.split(/\n/).map(l=>l.trim()).filter(l=>l).map(l=>{const m=l.match(/^(\d+)[.\s]+(.+)$/);return{id:Date.now()+Math.random(),number:m?m[1]:'',name:m?m[2]:l}});
+                    updateActiveCourse(c=>({...c,students:[...c.students,...newS]})); showToast('已匯入學生');
+                } else if(modalType === 'COURSE') {
+                    const newC = inputText.split(/\n/).map(l=>l.trim()).filter(l=>l).map(n=>({id:'c_'+Date.now()+Math.random(),name:n,students:[],records:{}}));
+                    setCourses(p=>[...p,...newC]); setActiveCourseId(newC[0].id); showToast('已新增課程');
+                } else if(modalType === 'PERIOD') {
+                    setPeriodConfig(inputText.split(/\n/).map(l=>l.trim()).filter(l=>l)); showToast('節次已更新');
+                } else if(modalType === 'CLOUD_SETUP') {
+                    setScriptUrl(inputText.trim()); showToast('連結已儲存');
+                }
+                closeModal();
+            };
+            const copyReport = () => {
+                const sorted = getSortedStudents();
+                const records = activeCourse.records[currentDate]?.[currentPeriod] || {};
+                const g = { ABSENT: [], LATE: [], LEAVE_EARLY: [], SICK: [], PERSONAL: [], OFFICIAL: [] };
+                let p = 0;
+                const getAnon = (n) => { if(!n)return''; if(n.length===2)return 'O'+n.slice(1); if(n.length===3)return n[0]+'O'+n.slice(2); if(n.length===4)return n.slice(0,2)+'O'+n.slice(3); return n.length>4?n.slice(0,-2)+'O'+n.slice(-1):n; };
+                sorted.forEach(s => { const st = records[s.id] || 'PRESENT'; if(st==='PRESENT')p++; else if(g[st]) g[st].push(`${s.number?s.number+'.':''}${getAnon(s.name)}`); });
+                let r = `🏫 ${activeCourse.name}\n📅 ${currentDate} (${currentPeriod})\n📊 應到 ${sorted.length} / 實到 ${p}\n------------------\n`;
+                if(g.ABSENT.length)r+=`❌ 缺席：${g.ABSENT.join('、')}\n`;
+                if(g.LATE.length)r+=`⚠️ 遲到：${g.LATE.join('、')}\n`;
+                if(g.LEAVE_EARLY.length)r+=`🏃 早退：${g.LEAVE_EARLY.join('、')}\n`;
+                if(g.SICK.length)r+=`😷 病假：${g.SICK.join('、')}\n`;
+                if(g.PERSONAL.length)r+=`🏠 事假：${g.PERSONAL.join('、')}\n`;
+                if(g.OFFICIAL.length)r+=`🏢 公假：${g.OFFICIAL.join('、')}\n`;
+                if(Object.values(g).every(arr=>arr.length===0))r+=`✅ 全員到齊\n`;
+                const ta=document.createElement("textarea");ta.value=r;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');showToast('報表已複製 (隱私保護)');}catch(e){}document.body.removeChild(ta);
+            };
+
+            const deleteCourse = (e, id) => { e.stopPropagation(); if(courses.length<=1)return; if(confirm('刪除課程？')) { const n=courses.filter(c=>c.id!==id); setCourses(n); if(activeCourseId===id)setActiveCourseId(n[0].id); }};
+
+            const stats = getStats();
+            const sortedStudents = getSortedStudents();
+
+            // Components
+            const renderSidebar = () => (
+                <React.Fragment>
+                    <div className="p-4 bg-slate-100 border-b flex justify-between items-center"><h2 className="font-bold text-slate-700 flex items-center gap-2"><Icons.BookOpen size={18}/> 課程</h2><button onClick={()=>setModalType('COURSE')} className="p-1.5 bg-indigo-100 text-indigo-600 rounded"><Icons.Plus size={18}/></button></div>
+                    <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                        {courses.map(c=>(
+                            <div key={c.id} onClick={()=>{setActiveCourseId(c.id);setIsSidebarOpen(false)}} className={`group flex items-center justify-between p-3 rounded-lg cursor-pointer ${activeCourseId===c.id?'bg-indigo-50 text-indigo-700 font-bold':'hover:bg-gray-100 text-gray-600'}`}>
+                                <span className="truncate">{c.name}</span>
+                                <div className="flex items-center gap-2">
+                                    {activeCourseId===c.id&&<Icons.Check size={16}/>}
+                                    <button onClick={(e)=>deleteCourse(e,c.id)} className="p-1 text-gray-400 hover:text-red-500 transition-colors"><Icons.Trash2 size={14}/></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="p-4 border-t space-y-2 bg-gray-50">
+                        <div className="text-xs font-bold text-gray-400 uppercase mb-1">雲端同步 (換裝置用)</div>
+                        <button disabled={isSyncing} onClick={handleCloudSyncUpload} className="flex items-center w-full gap-3 p-3 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100">
+                           {isSyncing?<span className="spinner"></span>:<Icons.Save size={16}/>} 上傳設定 (備份到雲端)
+                        </button>
+                        <button disabled={isSyncing} onClick={handleCloudSyncDownload} className="flex items-center w-full gap-3 p-3 text-sm font-medium text-orange-700 bg-orange-50 border border-orange-200 rounded-lg hover:bg-orange-100">
+                           {isSyncing?<span className="spinner"></span>:<Icons.Download size={16}/>} 下載設定 (從雲端還原)
+                        </button>
+                        <hr className="my-2"/>
+                        <button onClick={()=>{setInputText(scriptUrl);setModalType('CLOUD_SETUP');setIsSidebarOpen(false)}} className={`flex items-center w-full gap-3 p-3 text-sm font-medium border rounded-lg ${scriptUrl?'text-green-700 bg-green-50':'text-gray-700 bg-white'}`}><Icons.Settings size={16}/>{scriptUrl?'已連結 Google':'設定雲端連結'}</button>
+                        <button onClick={()=>{setInputText(periodConfig.join('\n'));setModalType('PERIOD');setIsSidebarOpen(false)}} className="flex items-center w-full gap-3 p-3 text-sm font-medium text-gray-700 bg-white border rounded-lg"><Icons.List size={16}/> 設定節次</button>
+                        <button onClick={()=>{setModalType('IMPORT');setIsSidebarOpen(false)}} className="flex items-center w-full gap-3 p-3 text-sm font-medium text-gray-700 bg-white border rounded-lg"><Icons.Upload size={16}/> 匯入名單</button>
+                        <button onClick={()=>setIsSidebarOpen(false)} className="md:hidden w-full py-2 text-center text-gray-500 bg-gray-200 rounded mt-2">關閉</button>
+                    </div>
+                </React.Fragment>
+            );
+
+            return (
+                <div className="flex h-screen bg-gray-50 text-gray-800 font-sans overflow-hidden">
+                    <aside className="hidden md:flex flex-col w-72 bg-white border-r shadow-sm z-30">{renderSidebar()}</aside>
+                    <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+                        <header className="bg-slate-800 text-white shadow-lg z-20">
+                            <div className="flex justify-between items-center p-3 lg:px-6">
+                                <div className="flex items-center gap-2 overflow-hidden"><button onClick={()=>setIsSidebarOpen(true)} className="md:hidden p-2 hover:bg-slate-700 rounded-full"><Icons.Menu size={20}/></button><div className="font-bold text-lg truncate max-w-[150px] md:max-w-xs">{activeCourse.name}</div></div>
+                                <div className="flex gap-2"><div className="flex items-center bg-slate-700 rounded-lg px-2 py-1 border border-slate-600"><input type="date" value={currentDate} onChange={e=>setCurrentDate(e.target.value)} className="bg-transparent text-white border-none outline-none text-xs w-[85px] cursor-pointer"/></div><div className="relative"><select value={currentPeriod} onChange={e=>setCurrentPeriod(e.target.value)} className="appearance-none bg-indigo-600 text-white pl-3 pr-8 py-1 rounded-lg text-sm font-bold border border-indigo-500 cursor-pointer">{periodConfig.map(p=><option key={p} value={p}>{p}</option>)}</select><div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-indigo-200"><Icons.Clock size={12}/></div></div></div>
+                            </div>
+                            <div className="grid grid-cols-4 gap-px bg-slate-700 border-t border-slate-600 text-center py-2">
+                                <div><span className="text-[10px] text-slate-400 block">應到</span><span className="text-lg font-bold text-slate-300">{stats.t}</span></div>
+                                <div><span className="text-[10px] text-slate-400 block">實到</span><span className="text-lg font-bold text-green-400">{stats.p}</span></div>
+                                <div><span className="text-[10px] text-slate-400 block">缺席</span><span className="text-lg font-bold text-red-400">{stats.a}</span></div>
+                                <div><span className="text-[10px] text-slate-400 block">其他</span><span className="text-lg font-bold text-yellow-400">{stats.o}</span></div>
+                            </div>
+                        </header>
+                        {isSidebarOpen && <div className="fixed inset-0 z-50 flex md:hidden"><div className="bg-white w-72 shadow-2xl flex flex-col h-full animate-slide-in">{renderSidebar()}</div><div className="flex-1 bg-black bg-opacity-30 backdrop-blur-sm" onClick={()=>setIsSidebarOpen(false)}></div></div>}
+                        <main className="flex-1 overflow-y-auto p-3 lg:p-6 pb-24 bg-gray-50">
+                            {sortedStudents.length===0 ? <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-4"><Icons.LayoutGrid size={48} className="mx-auto mb-2 text-gray-300"/><p>尚無學生資料</p><button onClick={()=>setModalType('IMPORT')} className="px-6 py-2 bg-indigo-600 text-white rounded-full shadow-lg">匯入名單</button></div> : 
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                                {sortedStudents.map(s => {
+                                    const stKey = activeCourse.records[currentDate]?.[currentPeriod]?.[s.id] || 'PRESENT';
+                                    const st = STATUS_CONFIG[stKey];
+                                    return (
+                                        <div key={s.id} className={`relative flex items-center p-3 bg-white rounded-xl shadow-sm border border-transparent hover:shadow-md active:scale-[0.98] ${stKey!=='PRESENT'?st.color.replace('text-','border-').replace('bg-','ring-1 ring-'):'hover:border-gray-200'}`}>
+                                            <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${st.color.replace('text-','bg-').split(' ')[0]}`}></div>
+                                            <div className="flex-1 flex items-center cursor-pointer select-none" onClick={()=>quickToggle(s.id)}><div className="w-8 pl-2 font-mono text-gray-400 font-bold text-lg">{s.number||''}</div><div className="flex-1 px-2 font-bold text-gray-800 text-lg">{s.name}</div></div>
+                                            <button onClick={(e)=>{e.stopPropagation();setActiveStudentForMenu(s)}} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold transition-colors ${st.color}`}>{st.icon}{st.label}</button>
+                                        </div>
+                                    )
+                                })}
+                            </div>}
+                        </main>
+                        <div className="fixed bottom-6 right-6 z-10 flex gap-3">
+                             <button disabled={isUploading} onClick={handleBackupReport} className={`flex items-center gap-2 px-4 py-3 rounded-full shadow-xl font-bold text-white ${isUploading?'bg-gray-400':'bg-green-600 hover:bg-green-700'}`}>{isUploading?<span className="spinner"></span>:<Icons.CloudUpload size={18}/>}<span className="hidden sm:inline">{isUploading?'上傳中...':'備份報表'}</span></button>
+                             <button onClick={copyReport} className="flex items-center gap-2 bg-slate-800 text-white px-5 py-3 rounded-full shadow-xl hover:bg-slate-700 font-bold"><Icons.ShieldCheck size={18} className="text-green-300"/><span className="hidden sm:inline">複製報表</span><span className="sm:hidden">複製</span></button>
+                        </div>
+                    </div>
+                    {activeStudentForMenu && <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm" onClick={()=>setActiveStudentForMenu(null)}>
+                        <div className="bg-white w-full max-w-md rounded-t-2xl md:rounded-2xl p-6 shadow-2xl m-0 md:m-4" onClick={e=>e.stopPropagation()}>
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="font-bold text-lg flex items-center gap-2"><span className="px-2 py-0.5 bg-gray-100 rounded text-sm text-gray-500 font-mono">{activeStudentForMenu.number}</span>{activeStudentForMenu.name}</h3>
+                                <button onClick={()=>setActiveStudentForMenu(null)} className="p-1 hover:bg-gray-100 rounded-full"><Icons.X size={20}/></button>
+                            </div>
+                            <div className="grid grid-cols-3 gap-3">{Object.values(STATUS_CONFIG).map(c=>(<button key={c.id} onClick={()=>setStudentStatus(activeStudentForMenu.id,c.id)} className={`flex flex-col items-center justify-center p-3 rounded-xl border hover:scale-105 active:scale-95 ${c.color.replace('bg-','hover:bg-').replace('text-','hover:text-')}`}><div className="mb-2">{c.icon}</div><span className="font-bold text-sm">{c.label}</span></button>))}</div>
+                            <div className="mt-4 pt-4 border-t flex justify-center">
+                                <button onClick={() => deleteStudent(activeStudentForMenu.id)} className="flex items-center gap-2 text-red-500 hover:text-red-700 hover:bg-red-50 px-4 py-2 rounded-lg transition-colors text-sm font-bold">
+                                    <Icons.Trash2 size={16} /> 移除此學生
+                                </button>
+                            </div>
+                        </div>
+                    </div>}
+                    {modalType && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm p-4"><div className="bg-white w-full max-w-md rounded-2xl shadow-2xl flex flex-col max-h-[85vh]"><div className="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-2xl"><h3 className="font-bold text-lg flex items-center gap-2">{modalType==='CLOUD_SETUP'?'設定雲端連結':modalType==='IMPORT'?'匯入名單':modalType==='COURSE'?'新增課程':'設定節次'}</h3><button onClick={closeModal} className="p-1 hover:bg-gray-200 rounded-full"><Icons.X size={20}/></button></div><div className="flex-1 p-4 flex flex-col gap-2 overflow-y-auto">{modalType==='CLOUD_SETUP'&&<p className="text-sm text-gray-500">請貼上 Apps Script 網址：</p>}{modalType==='IMPORT'&&<p className="text-sm text-gray-500">格式：座號 姓名 (一行一位)</p>}<textarea value={inputText} onChange={e=>setInputText(e.target.value)} className="flex-1 min-h-[150px] p-3 bg-gray-50 border rounded-lg resize-none focus:outline-none font-mono text-sm" placeholder={modalType==='CLOUD_SETUP'?"https://script.google.com/macros/s/...":"在此輸入..."}/></div><div className="p-4 border-t bg-gray-50 rounded-b-2xl"><button onClick={handleModalSubmit} className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl shadow hover:bg-indigo-700">確認儲存</button></div></div></div>}
+                    {notification && <div className="fixed top-6 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-full shadow-lg z-[70] flex items-center gap-2"><Icons.Check size={16} className="text-green-400"/>{notification}</div>}
+                </div>
+            );
+        }
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<RollCallApp />);
+    </script>
+</body>
+</html>
