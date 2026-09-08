@@ -23,7 +23,7 @@ export function App() {
     activeCourse, activeCourseId, setActiveCourseId,
     periodConfig, setPeriodConfig,
     scriptUrl, setScriptUrl,
-    behaviors, customBehaviors, addCustomBehavior, updateCustomBehavior, deleteCustomBehavior, hideDefaultBehavior, showDefaultBehavior,
+    behaviors, customBehaviors, addCustomBehavior, updateCustomBehavior, deleteCustomBehavior, hideDefaultBehavior, showDefaultBehavior, syncBehaviors,
     addNewCourse, deleteCourse,
     importStudents, deleteStudent,
     setStudentStatus, quickToggleStudent,
@@ -88,6 +88,17 @@ export function App() {
     showToast('報表已複製 (隱私保護)');
   };
 
+  const handleSyncBehaviors = async () => {
+    if (!scriptUrl) { setModalType('CLOUD_SETUP'); return; }
+    if (!window.confirm('⚠️ 確定要同步行為設定嗎？\n（將從雲端下載並上傳本地行為設定）')) return;
+    try {
+      await syncBehaviors(scriptUrl);
+      showToast('✅ 行為設定同步完成');
+    } catch (e) {
+      showToast('❌ 同步失敗：' + (e.message || '請檢查 GAS 連結'));
+    }
+  };
+
   return (
     <div className="flex h-screen bg-gray-50 text-gray-800 font-sans overflow-hidden">
       {/* Desktop Sidebar */}
@@ -100,6 +111,7 @@ export function App() {
           setCourses={setCourses} showToast={showToast}
           onOpenScoreBoard={() => setIsScoreBoardOpen(true)}
           onOpenStatsPanel={() => setIsStatsPanelOpen(true)}
+          onSyncBehaviors={handleSyncBehaviors}
         />
       </aside>
 
@@ -125,6 +137,7 @@ export function App() {
                 setCourses={setCourses} showToast={showToast}
                 onOpenScoreBoard={() => setIsScoreBoardOpen(true)}
                 onOpenStatsPanel={() => setIsStatsPanelOpen(true)}
+                onSyncBehaviors={handleSyncBehaviors}
               />
             </div>
             <div className="flex-1 bg-black bg-opacity-30 backdrop-blur-sm" onClick={() => setIsSidebarOpen(false)}></div>

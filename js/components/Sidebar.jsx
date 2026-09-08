@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Icons } from './Icons.jsx';
-import { backupReport, syncUpload, syncDownload } from '../services/cloudSync.js';
+import { backupReport, syncUpload, syncDownload, syncBehaviorsUpload, syncBehaviorsDownload } from '../services/cloudSync.js';
 
 export function Sidebar({
   courses, activeCourseId, setActiveCourseId,
@@ -8,7 +8,7 @@ export function Sidebar({
   addNewCourse, deleteCourse,
   setModalType, setInputText, setIsSidebarOpen,
   setCourses, showToast,
-  onOpenScoreBoard, onOpenStatsPanel,
+  onOpenScoreBoard, onOpenStatsPanel, onSyncBehaviors,
 }) {
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -86,6 +86,10 @@ export function Sidebar({
         <button disabled={isSyncing} onClick={handleCloudSyncDownload}
           className="flex items-center w-full gap-3 p-3 text-sm font-medium text-orange-700 bg-orange-50 border border-orange-200 rounded-lg hover:bg-orange-100">
           {isSyncing ? <span className="spinner"></span> : <Icons.Download size={16}/>} 下載設定 (從雲端還原)
+        </button>
+        <button disabled={isSyncing} onClick={onSyncBehaviors}
+          className="flex items-center w-full gap-3 p-3 text-sm font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100">
+          {isSyncing ? <span className="spinner"></span> : <Icons.RefreshCw size={16}/>} 同步行為設定
         </button>
         <hr className="my-2"/>
         <button onClick={() => openSettings('CLOUD_SETUP', scriptUrl)}

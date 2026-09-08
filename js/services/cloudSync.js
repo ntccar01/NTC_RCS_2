@@ -43,3 +43,31 @@ export const syncDownload = async (scriptUrl) => {
   const data = await res.json();
   return data;
 };
+
+// Behavior sync: upload
+export const syncBehaviorsUpload = async (scriptUrl, customBehaviors, hiddenDefaults) => {
+  const payload = {
+    type: 'sync_behaviors',
+    customBehaviors,
+    hiddenDefaults,
+  };
+  const res = await fetch(scriptUrl, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return res;
+};
+
+// Behavior sync: download
+export const syncBehaviorsDownload = async (scriptUrl) => {
+  const res = await fetch(scriptUrl + '?action=behaviors');
+  const text = await res.text();
+  try {
+    const data = JSON.parse(text);
+    return data;
+  } catch {
+    return { result: 'error', msg: '解析失敗' };
+  }
+};

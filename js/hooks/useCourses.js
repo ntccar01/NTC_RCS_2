@@ -11,6 +11,7 @@ import {
 import { createCourse, deleteCourseFromList, findCourse } from '../models/course.js';
 import { parseStudentList, addStudents, removeStudent } from '../models/student.js';
 import { setAttendance, quickToggle, toggleBehavior, setHomeworkStatus, setStudentNote } from '../models/record.js';
+import { syncBehaviorsUpload, syncBehaviorsDownload } from '../services/cloudSync.js';
 
 export function useCourses() {
   const [courses, setCourses] = useState(() => loadCourses());
@@ -122,6 +123,23 @@ export function useCourses() {
     updateActiveCourse((c) => setStudentNote(c, date, period, studentId, note));
   };
 
+  const syncBehaviors = async (scriptUrl) => {
+    if (!scriptUrl) throw new Error('請先設定 GAS 連結');
+    // 1. Download from Sheets
+    const remote = await syncBehaviorsDownload(scriptUrl);
+    if (remote.result === 'error') throw new Error(remote.msg || '下載失敗');
+    // 2. Merge: remote custom behaviors + hidden defaults → apply to local
+    if (remote.customBehaviors && Array.isArray(remote.customBehaviors)) {
+      setCustomBehaviors(remote.customBehaviors);
+    }
+    if (remote.hiddenDefaults && Array.isArray(remote.hiddenDefaults)) {
+      setHiddenDefaults(remote.hiddenDefaults);
+    }
+    // 3. Upload local to Sheets
+    await syncBehaviorsUpload(scriptUrl, customBehaviors, hiddenDefaults);
+    return { result: 'success', msg: '行為設定同步完成' };
+  };
+
   return {
     courses,
     setCourses,
@@ -140,6 +158,7 @@ export function useCourses() {
     deleteCustomBehavior,
     hideDefaultBehavior,
     showDefaultBehavior,
+    syncBehaviors,
     addNewCourse,
     deleteCourse,
     importStudents,
