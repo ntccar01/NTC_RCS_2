@@ -51,3 +51,7 @@ export const saveScriptUrl = (url) => storage.setString(STORAGE_KEYS.SCRIPT_URL,
 export const loadCustomBehaviors = () => storage.get(STORAGE_KEYS.CUSTOM_BEHAVIORS, []);
 
 export const saveCustomBehaviors = (behaviors) => storage.set(STORAGE_KEYS.CUSTOM_BEHAVIORS, behaviors);
+
+export const loadHiddenDefaults = () => storage.get(STORAGE_KEYS.HIDDEN_DEFAULTS, []);
+
+export const saveHiddenDefaults = (ids) => storage.set(STORAGE_KEYS.HIDDEN_DEFAULTS, ids);

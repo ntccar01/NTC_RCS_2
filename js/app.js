@@ -23,7 +23,7 @@ export function App() {
     activeCourse, activeCourseId, setActiveCourseId,
     periodConfig, setPeriodConfig,
     scriptUrl, setScriptUrl,
-    behaviors, customBehaviors, addCustomBehavior, updateCustomBehavior, deleteCustomBehavior,
+    behaviors, customBehaviors, addCustomBehavior, updateCustomBehavior, deleteCustomBehavior, hideDefaultBehavior, showDefaultBehavior,
     addNewCourse, deleteCourse,
     importStudents, deleteStudent,
     setStudentStatus, quickToggleStudent,
@@ -223,10 +223,12 @@ export function App() {
       {/* Behavior Manager */}
       {isBehaviorManagerOpen && (
         <BehaviorManager
+          behaviors={behaviors}
           customBehaviors={customBehaviors}
           addCustomBehavior={addCustomBehavior}
           updateCustomBehavior={updateCustomBehavior}
           deleteCustomBehavior={deleteCustomBehavior}
+          hideDefaultBehavior={hideDefaultBehavior}
           onClose={() => setIsBehaviorManagerOpen(false)}
         />
       )}

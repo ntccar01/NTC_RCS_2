@@ -16,7 +16,7 @@ const COLOR_LIST = [
   'bg-cyan-50 text-cyan-600 border-cyan-200',
 ];
 
-export function BehaviorManager({ customBehaviors, addCustomBehavior, updateCustomBehavior, deleteCustomBehavior, onClose }) {
+export function BehaviorManager({ behaviors, customBehaviors, addCustomBehavior, updateCustomBehavior, deleteCustomBehavior, hideDefaultBehavior, onClose }) {
   const [label, setLabel] = useState('');
   const [icon, setIcon] = useState('📱');
   const [score, setScore] = useState(0);
@@ -40,7 +40,24 @@ export function BehaviorManager({ customBehaviors, addCustomBehavior, updateCust
     if (!trimmed) return;
     const penalty = isBonus ? 0 : -Math.abs(score);
     const bonus = isBonus ? Math.abs(score) : 0;
-    updateCustomBehavior(editingId, { label: trimmed, icon: icon || '⭐', penalty, bonus });
+    const existingCustom = customBehaviors.find((c) => c.id === editingId);
+    if (existingCustom) {
+      // Updating a custom or already-edited default
+      updateCustomBehavior(editingId, { label: trimmed, icon: icon || '⭐', penalty, bonus });
+    } else {
+      // Editing a default → create custom override with edited flag
+      const defaultB = behaviors.find((b) => b.id === editingId);
+      const override = {
+        id: editingId,
+        label: trimmed,
+        icon: icon || '⭐',
+        penalty,
+        bonus,
+        color: defaultB?.color || COLOR_LIST[0],
+        edited: true,
+      };
+      addCustomBehavior(override);
+    }
     resetForm();
   };
 
@@ -60,6 +77,16 @@ export function BehaviorManager({ customBehaviors, addCustomBehavior, updateCust
     if (addCustomBehavior(newBehavior)) {
       setLabel(''); setScore(0);
     }
+  };
+
+  const handleDelete = (b) => {
+    const isDefault = !b.edited && !customBehaviors.some((c) => c.id === b.id);
+    if (isDefault) {
+      hideDefaultBehavior(b.id);
+    } else {
+      deleteCustomBehavior(b.id);
+    }
+    if (editingId === b.id) resetForm();
   };
 
   const isEditing = editingId !== null;
@@ -122,14 +149,14 @@ export function BehaviorManager({ customBehaviors, addCustomBehavior, updateCust
             </div>
           </div>
 
-          {/* Custom behaviors list */}
+          {/* All behaviors list */}
           <div>
-            <h4 className="text-sm font-bold text-gray-600 mb-2">自訂行為（{customBehaviors.length}）</h4>
-            {customBehaviors.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-4">尚無自訂行為</p>
-            ) : (
-              <div className="space-y-2">
-                {customBehaviors.map((b) => (
+            <h4 className="text-sm font-bold text-gray-600 mb-2">所有行為（{behaviors.length}）</h4>
+            <div className="space-y-2">
+              {behaviors.map((b) => {
+                const isCustom = customBehaviors.some((c) => c.id === b.id);
+                const isEdited = b.edited;
+                return (
                   <div key={b.id} className={`flex items-center justify-between p-2.5 bg-white rounded-lg border ${editingId === b.id ? 'ring-2 ring-indigo-300' : ''}`}>
                     <div className="flex items-center gap-2">
                       <span className="text-lg">{b.icon}</span>
@@ -137,17 +164,19 @@ export function BehaviorManager({ customBehaviors, addCustomBehavior, updateCust
                       <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${b.bonus > 0 ? 'bg-green-100 text-green-600' : b.penalty < 0 ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'}`}>
                         {b.bonus > 0 ? '+' + b.bonus : (b.penalty < 0 ? b.penalty : '0')}
                       </span>
+                      {isEdited && <span className="text-xs bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded">已修改</span>}
+                      {isCustom && !isEdited && <span className="text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded">自訂</span>}
                     </div>
                     <div className="flex items-center gap-1">
                       <button onClick={() => startEdit(b)}
                         className="p-1.5 text-gray-400 hover:text-indigo-500 rounded-lg"><Icons.Edit3 size={16}/></button>
-                      <button onClick={() => { if (editingId === b.id) resetForm(); deleteCustomBehavior(b.id); }}
+                      <button onClick={() => handleDelete(b)}
                         className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg"><Icons.Trash2 size={16}/></button>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
+                );
+              })}
+            </div>
           </div>
         </div>
 

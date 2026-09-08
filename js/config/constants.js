@@ -36,6 +36,7 @@ export const STORAGE_KEYS = {
   PERIOD_CONFIG: 'rc_periods_config',
   SCRIPT_URL: 'rc_google_script_url',
   CUSTOM_BEHAVIORS: 'rc_custom_behaviors',
+  HIDDEN_DEFAULTS: 'rc_hidden_defaults',
 };
 
 export const CHART_COLORS = {

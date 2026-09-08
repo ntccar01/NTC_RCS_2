@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import { DEFAULT_PERIODS, DEFAULT_BEHAVIORS, STORAGE_KEYS } from '../config/constants.js';
+import { DEFAULT_PERIODS, DEFAULT_BEHAVIORS } from '../config/constants.js';
 import {
   loadCourses, saveCourses,
   loadActiveCourseId, saveActiveCourseId,
   loadPeriodConfig, savePeriodConfig,
   loadScriptUrl, saveScriptUrl,
   loadCustomBehaviors, saveCustomBehaviors,
+  loadHiddenDefaults, saveHiddenDefaults,
 } from '../config/storage.js';
 import { createCourse, deleteCourseFromList, findCourse } from '../models/course.js';
 import { parseStudentList, addStudents, removeStudent } from '../models/student.js';
@@ -17,6 +18,7 @@ export function useCourses() {
   const [periodConfig, setPeriodConfig] = useState(() => loadPeriodConfig() || DEFAULT_PERIODS);
   const [scriptUrl, setScriptUrl] = useState(() => loadScriptUrl());
   const [customBehaviors, setCustomBehaviors] = useState(() => loadCustomBehaviors());
+  const [hiddenDefaults, setHiddenDefaults] = useState(() => loadHiddenDefaults());
 
   const activeCourseIdRef = useRef(activeCourseId);
   activeCourseIdRef.current = activeCourseId;
@@ -28,18 +30,43 @@ export function useCourses() {
   useEffect(() => savePeriodConfig(periodConfig), [periodConfig]);
   useEffect(() => saveScriptUrl(scriptUrl), [scriptUrl]);
   useEffect(() => saveCustomBehaviors(customBehaviors), [customBehaviors]);
+  useEffect(() => saveHiddenDefaults(hiddenDefaults), [hiddenDefaults]);
 
-  const behaviors = [...DEFAULT_BEHAVIORS, ...customBehaviors];
+  // Merge: defaults (minus hidden) → apply custom overrides (edited defaults replace originals)
+  const behaviors = (() => {
+    const visible = DEFAULT_BEHAVIORS.filter((d) => !hiddenDefaults.includes(d.id));
+    const overrides = customBehaviors.filter((c) => c.edited);
+    const overriddenIds = overrides.map((o) => o.id);
+    const base = visible.filter((d) => !overriddenIds.includes(d.id));
+    const customNew = customBehaviors.filter((c) => !c.edited);
+    return [...base, ...overrides, ...customNew];
+  })();
 
   const addCustomBehavior = (behavior) => {
-    const existing = [...DEFAULT_BEHAVIORS, ...customBehaviors];
-    if (existing.some((b) => b.label === behavior.label)) return false;
+    if (behaviors.some((b) => b.label === behavior.label && b.id !== behavior.id)) return false;
     setCustomBehaviors((prev) => [...prev, behavior]);
     return true;
   };
 
   const deleteCustomBehavior = (behaviorId) => {
+    const custom = customBehaviors.find((c) => c.id === behaviorId);
+    if (custom && custom.edited) {
+      // Deleting an edited default → remove the override, behavior reverts to original
+      setCustomBehaviors((prev) => prev.filter((b) => b.id !== behaviorId));
+    } else {
+      // Deleting a pure custom behavior
+      setCustomBehaviors((prev) => prev.filter((b) => b.id !== behaviorId));
+    }
+  };
+
+  const hideDefaultBehavior = (behaviorId) => {
+    setHiddenDefaults((prev) => [...prev, behaviorId]);
+    // Also remove any override if it exists
     setCustomBehaviors((prev) => prev.filter((b) => b.id !== behaviorId));
+  };
+
+  const showDefaultBehavior = (behaviorId) => {
+    setHiddenDefaults((prev) => prev.filter((id) => id !== behaviorId));
   };
 
   const updateCustomBehavior = (behaviorId, updates) => {
@@ -107,9 +134,12 @@ export function useCourses() {
     setScriptUrl,
     behaviors,
     customBehaviors,
+    hiddenDefaults,
     addCustomBehavior,
     updateCustomBehavior,
     deleteCustomBehavior,
+    hideDefaultBehavior,
+    showDefaultBehavior,
     addNewCourse,
     deleteCourse,
     importStudents,
