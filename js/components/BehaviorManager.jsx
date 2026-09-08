@@ -16,7 +16,7 @@ const COLOR_LIST = [
   'bg-cyan-50 text-cyan-600 border-cyan-200',
 ];
 
-export function BehaviorManager({ behaviors, customBehaviors, addCustomBehavior, updateCustomBehavior, deleteCustomBehavior, hideDefaultBehavior, onClose }) {
+export function BehaviorManager({ behaviors, customBehaviors, addCustomBehavior, updateCustomBehavior, deleteCustomBehavior, hideDefaultBehavior, moveBehavior, onClose }) {
   const [label, setLabel] = useState('');
   const [icon, setIcon] = useState('📱');
   const [score, setScore] = useState(0);
@@ -153,12 +153,18 @@ export function BehaviorManager({ behaviors, customBehaviors, addCustomBehavior,
           <div>
             <h4 className="text-sm font-bold text-gray-600 mb-2">所有行為（{behaviors.length}）</h4>
             <div className="space-y-2">
-              {behaviors.map((b) => {
+              {behaviors.map((b, idx) => {
                 const isCustom = customBehaviors.some((c) => c.id === b.id);
                 const isEdited = b.edited;
                 return (
                   <div key={b.id} className={`flex items-center justify-between p-2.5 bg-white rounded-lg border ${editingId === b.id ? 'ring-2 ring-indigo-300' : ''}`}>
                     <div className="flex items-center gap-2">
+                      <div className="flex flex-col -space-y-1">
+                        <button disabled={idx === 0} onClick={() => moveBehavior(b.id, 'up')}
+                          className={`text-xs leading-none ${idx === 0 ? 'text-gray-300' : 'text-gray-400 hover:text-indigo-500'}`}>▲</button>
+                        <button disabled={idx === behaviors.length - 1} onClick={() => moveBehavior(b.id, 'down')}
+                          className={`text-xs leading-none ${idx === behaviors.length - 1 ? 'text-gray-300' : 'text-gray-400 hover:text-indigo-500'}`}>▼</button>
+                      </div>
                       <span className="text-lg">{b.icon}</span>
                       <span className="font-bold text-sm">{b.label}</span>
                       <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${b.bonus > 0 ? 'bg-green-100 text-green-600' : b.penalty < 0 ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'}`}>

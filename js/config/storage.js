@@ -55,3 +55,7 @@ export const saveCustomBehaviors = (behaviors) => storage.set(STORAGE_KEYS.CUSTO
 export const loadHiddenDefaults = () => storage.get(STORAGE_KEYS.HIDDEN_DEFAULTS, []);
 
 export const saveHiddenDefaults = (ids) => storage.set(STORAGE_KEYS.HIDDEN_DEFAULTS, ids);
+
+export const loadBehaviorOrder = () => storage.get(STORAGE_KEYS.BEHAVIOR_ORDER, null);
+
+export const saveBehaviorOrder = (order) => storage.set(STORAGE_KEYS.BEHAVIOR_ORDER, order);

@@ -7,6 +7,7 @@ import {
   loadScriptUrl, saveScriptUrl,
   loadCustomBehaviors, saveCustomBehaviors,
   loadHiddenDefaults, saveHiddenDefaults,
+  loadBehaviorOrder, saveBehaviorOrder,
 } from '../config/storage.js';
 import { createCourse, deleteCourseFromList, findCourse } from '../models/course.js';
 import { parseStudentList, addStudents, removeStudent } from '../models/student.js';
@@ -20,6 +21,7 @@ export function useCourses() {
   const [scriptUrl, setScriptUrl] = useState(() => loadScriptUrl());
   const [customBehaviors, setCustomBehaviors] = useState(() => loadCustomBehaviors());
   const [hiddenDefaults, setHiddenDefaults] = useState(() => loadHiddenDefaults());
+  const [behaviorOrder, setBehaviorOrder] = useState(() => loadBehaviorOrder());
 
   const activeCourseIdRef = useRef(activeCourseId);
   activeCourseIdRef.current = activeCourseId;
@@ -32,38 +34,51 @@ export function useCourses() {
   useEffect(() => saveScriptUrl(scriptUrl), [scriptUrl]);
   useEffect(() => saveCustomBehaviors(customBehaviors), [customBehaviors]);
   useEffect(() => saveHiddenDefaults(hiddenDefaults), [hiddenDefaults]);
+  useEffect(() => saveBehaviorOrder(behaviorOrder), [behaviorOrder]);
 
-  // Merge: defaults (minus hidden) → apply custom overrides (edited defaults replace originals)
+  // Merge: defaults (minus hidden) → apply custom overrides → apply order
   const behaviors = (() => {
     const visible = DEFAULT_BEHAVIORS.filter((d) => !hiddenDefaults.includes(d.id));
     const overrides = customBehaviors.filter((c) => c.edited);
     const overriddenIds = overrides.map((o) => o.id);
     const base = visible.filter((d) => !overriddenIds.includes(d.id));
     const customNew = customBehaviors.filter((c) => !c.edited);
-    return [...base, ...overrides, ...customNew];
+    const merged = [...base, ...overrides, ...customNew];
+
+    // Apply behaviorOrder if it exists
+    if (behaviorOrder && behaviorOrder.length > 0) {
+      const byId = {};
+      merged.forEach((b) => { byId[b.id] = b; });
+      // Items in order first, then any new items not in order list
+      const ordered = behaviorOrder
+        .filter((id) => byId[id])
+        .map((id) => byId[id]);
+      const newItems = merged.filter((b) => !behaviorOrder.includes(b.id));
+      return [...ordered, ...newItems];
+    }
+    return merged;
   })();
 
   const addCustomBehavior = (behavior) => {
     if (behaviors.some((b) => b.label === behavior.label && b.id !== behavior.id)) return false;
     setCustomBehaviors((prev) => [...prev, behavior]);
+    // Add to end of behavior order
+    setBehaviorOrder((prev) => {
+      const current = prev || behaviors.map((b) => b.id);
+      return [...current, behavior.id];
+    });
     return true;
   };
 
   const deleteCustomBehavior = (behaviorId) => {
-    const custom = customBehaviors.find((c) => c.id === behaviorId);
-    if (custom && custom.edited) {
-      // Deleting an edited default → remove the override, behavior reverts to original
-      setCustomBehaviors((prev) => prev.filter((b) => b.id !== behaviorId));
-    } else {
-      // Deleting a pure custom behavior
-      setCustomBehaviors((prev) => prev.filter((b) => b.id !== behaviorId));
-    }
+    setCustomBehaviors((prev) => prev.filter((b) => b.id !== behaviorId));
+    setBehaviorOrder((prev) => prev ? prev.filter((id) => id !== behaviorId) : prev);
   };
 
   const hideDefaultBehavior = (behaviorId) => {
     setHiddenDefaults((prev) => [...prev, behaviorId]);
-    // Also remove any override if it exists
     setCustomBehaviors((prev) => prev.filter((b) => b.id !== behaviorId));
+    setBehaviorOrder((prev) => prev ? prev.filter((id) => id !== behaviorId) : prev);
   };
 
   const showDefaultBehavior = (behaviorId) => {
@@ -72,6 +87,18 @@ export function useCourses() {
 
   const updateCustomBehavior = (behaviorId, updates) => {
     setCustomBehaviors((prev) => prev.map((b) => b.id === behaviorId ? { ...b, ...updates } : b));
+  };
+
+  const moveBehavior = (behaviorId, direction) => {
+    const ids = behaviors.map((b) => b.id);
+    const idx = ids.indexOf(behaviorId);
+    if (idx === -1) return;
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= ids.length) return;
+    // Swap
+    const newIds = [...ids];
+    [newIds[idx], newIds[targetIdx]] = [newIds[targetIdx], newIds[idx]];
+    setBehaviorOrder(newIds);
   };
 
   const updateActiveCourse = (updater) => {
@@ -125,17 +152,14 @@ export function useCourses() {
 
   const syncBehaviors = async (scriptUrl) => {
     if (!scriptUrl) throw new Error('請先設定 GAS 連結');
-    // 1. Download from Sheets
     const remote = await syncBehaviorsDownload(scriptUrl);
     if (remote.result === 'error') throw new Error(remote.msg || '下載失敗');
-    // 2. Merge: remote custom behaviors + hidden defaults → apply to local
     if (remote.customBehaviors && Array.isArray(remote.customBehaviors)) {
       setCustomBehaviors(remote.customBehaviors);
     }
     if (remote.hiddenDefaults && Array.isArray(remote.hiddenDefaults)) {
       setHiddenDefaults(remote.hiddenDefaults);
     }
-    // 3. Upload local to Sheets
     await syncBehaviorsUpload(scriptUrl, customBehaviors, hiddenDefaults);
     return { result: 'success', msg: '行為設定同步完成' };
   };
@@ -158,6 +182,7 @@ export function useCourses() {
     deleteCustomBehavior,
     hideDefaultBehavior,
     showDefaultBehavior,
+    moveBehavior,
     syncBehaviors,
     addNewCourse,
     deleteCourse,

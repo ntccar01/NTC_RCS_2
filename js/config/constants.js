@@ -37,6 +37,7 @@ export const STORAGE_KEYS = {
   SCRIPT_URL: 'rc_google_script_url',
   CUSTOM_BEHAVIORS: 'rc_custom_behaviors',
   HIDDEN_DEFAULTS: 'rc_hidden_defaults',
+  BEHAVIOR_ORDER: 'rc_behavior_order',
 };
 
 export const CHART_COLORS = {
