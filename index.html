@@ -1,0 +1,2019 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>點名神器 7.0 雲端漫遊版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>@keyframes slide-in { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+.animate-slide-in { animation: slide-in 0.3s ease-out; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.spinner { border: 3px solid rgba(255,255,255,0.3); border-radius: 50%; border-top: 3px solid #fff; width: 20px; height: 20px; animation: spin 1s linear infinite; }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+</style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans">
+    <div id="root"></div>
+    <script>
+        window.onerror = function(msg, src, line) {
+            var errBox = document.getElementById('errBox');
+            if (!errBox) {
+                errBox = document.createElement('div');
+                errBox.id = 'errBox';
+                errBox.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#dc2626;color:#fff;padding:12px;font:12px monospace;white-space:pre-wrap;z-index:99999;';
+                document.body.appendChild(errBox);
+            }
+            errBox.textContent = 'ERROR at line ' + line + ': ' + msg;
+        };
+    </script>
+    <script type="text/babel">// ===== React Globals =====
+const { useState, useEffect, useMemo, useCallback, useRef } = React;
+
+
+// ===== js/config/constants.js =====
+const STATUS_CONFIG = {
+  PRESENT: { id: 'PRESENT', label: '出席', color: 'bg-green-100 text-green-700 border-green-300', iconType: 'UserCheck' },
+  ABSENT: { id: 'ABSENT', label: '缺席', color: 'bg-red-100 text-red-700 border-red-300', iconType: 'UserX' },
+  LATE: { id: 'LATE', label: '遲到', color: 'bg-yellow-100 text-yellow-700 border-yellow-300', iconType: 'Clock' },
+  LEAVE_EARLY: { id: 'LEAVE_EARLY', label: '早退', color: 'bg-orange-100 text-orange-700 border-orange-300', iconType: 'LogOut' },
+  SICK: { id: 'SICK', label: '病假', color: 'bg-rose-100 text-rose-700 border-rose-300', iconType: 'Thermometer' },
+  PERSONAL: { id: 'PERSONAL', label: '事假', color: 'bg-purple-100 text-purple-700 border-purple-300', iconType: 'Coffee' },
+  OFFICIAL: { id: 'OFFICIAL', label: '公假', color: 'bg-blue-100 text-blue-700 border-blue-300', iconType: 'Briefcase' },
+};
+
+const DEFAULT_BEHAVIORS = [
+  { id: 'USE_PHONE',   label: '使用手機', icon: '📱', penalty: -1, color: 'bg-red-50 text-red-600 border-red-200' },
+  { id: 'SLEEP',       label: '睡覺',     icon: '😴', penalty: -2, color: 'bg-orange-50 text-orange-600 border-orange-200' },
+  { id: 'NOISY',       label: '吵鬧',     icon: '🗣️', penalty: -1, color: 'bg-yellow-50 text-yellow-600 border-yellow-200' },
+  { id: 'DISTRACT',    label: '分心',     icon: '😵', penalty: -1, color: 'bg-amber-50 text-amber-600 border-amber-200' },
+  { id: 'TALK',        label: '講話',     icon: '💬', penalty: -1, color: 'bg-yellow-50 text-yellow-600 border-yellow-200' },
+  { id: 'FOOD',        label: '吃東西',   icon: '🍔', penalty: -1, color: 'bg-orange-50 text-orange-600 border-orange-200' },
+  { id: 'LEAVE_SEAT',  label: '離座',     icon: '🚶', penalty: -1, color: 'bg-amber-50 text-amber-600 border-amber-200' },
+  { id: 'ACTIVE',      label: '積極回答', icon: '🙋', bonus: +2,  color: 'bg-green-50 text-green-600 border-green-200' },
+  { id: 'HELP_OTHERS', label: '幫助同學', icon: '🤝', bonus: +1,  color: 'bg-blue-50 text-blue-600 border-blue-200' },
+  { id: 'GOOD_Q',      label: '提問優質', icon: '💡', bonus: +1,  color: 'bg-indigo-50 text-indigo-600 border-indigo-200' },
+];
+
+const HOMEWORK_STATUS = {
+  DONE:    { id: 'DONE',    label: '已交', color: 'bg-green-100 text-green-700 border-green-300', icon: '✅' },
+  NOT_DONE:{ id: 'NOT_DONE',label: '未交', color: 'bg-red-100 text-red-700 border-red-300',     icon: '❌' },
+  LATE:    { id: 'LATE',    label: '補交', color: 'bg-yellow-100 text-yellow-700 border-yellow-300', icon: '⏰' },
+  NONE:    { id: 'NONE',    label: '無作业', color: 'bg-gray-100 text-gray-500 border-gray-300', icon: '➖' },
+};
+
+const DEFAULT_PERIODS = ['早自習', '第一節', '第二節', '第三節', '第四節', '午休', '第五節', '第六節', '第七節', '第八節'];
+
+const STORAGE_KEYS = {
+  COURSES: 'rc_courses_v5',
+  ACTIVE_COURSE_ID: 'rc_active_course_id',
+  PERIOD_CONFIG: 'rc_periods_config',
+  SCRIPT_URL: 'rc_google_script_url',
+  CUSTOM_BEHAVIORS: 'rc_custom_behaviors',
+};
+
+const CHART_COLORS = {
+  PRESENT: '#22c55e',
+  ABSENT: '#ef4444',
+  LATE: '#eab308',
+  LEAVE_EARLY: '#f97316',
+  SICK: '#f43f5e',
+  PERSONAL: '#a855f7',
+  OFFICIAL: '#3b82f6',
+};
+
+const ATTENDANCE_RATE_THRESHOLDS = [
+  { min: 90, label: '優秀', color: 'text-green-600', bg: 'bg-green-50' },
+  { min: 75, label: '良好', color: 'text-blue-600', bg: 'bg-blue-50' },
+  { min: 60, label: '普通', color: 'text-yellow-600', bg: 'bg-yellow-50' },
+  { min: 0,  label: '需改善', color: 'text-red-600', bg: 'bg-red-50' },
+];
+
+
+// ===== js/config/storage.js =====
+
+
+const storage = {
+  get(key, fallback) {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch {
+      return fallback;
+    }
+  },
+
+  set(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (e) {
+      console.warn('localStorage write failed:', e);
+    }
+  },
+
+  getString(key, fallback = '') {
+    return localStorage.getItem(key) || fallback;
+  },
+
+  setString(key, value) {
+    localStorage.setItem(key, value);
+  },
+};
+
+const loadCourses = () =>
+  storage.get(STORAGE_KEYS.COURSES, [
+    { id: 'default', name: '預設課程', students: [], records: {} },
+  ]);
+
+const saveCourses = (courses) => storage.set(STORAGE_KEYS.COURSES, courses);
+
+const loadActiveCourseId = (courses) =>
+  storage.getString(STORAGE_KEYS.ACTIVE_COURSE_ID, courses[0]?.id || '');
+
+const saveActiveCourseId = (id) => storage.setString(STORAGE_KEYS.ACTIVE_COURSE_ID, id);
+
+const loadPeriodConfig = () =>
+  storage.get(STORAGE_KEYS.PERIOD_CONFIG, null);
+
+const savePeriodConfig = (config) => storage.set(STORAGE_KEYS.PERIOD_CONFIG, config);
+
+const loadScriptUrl = () => storage.getString(STORAGE_KEYS.SCRIPT_URL);
+
+const saveScriptUrl = (url) => storage.setString(STORAGE_KEYS.SCRIPT_URL, url);
+
+const loadCustomBehaviors = () => storage.get(STORAGE_KEYS.CUSTOM_BEHAVIORS, []);
+
+const saveCustomBehaviors = (behaviors) => storage.set(STORAGE_KEYS.CUSTOM_BEHAVIORS, behaviors);
+
+
+// ===== js/models/course.js =====
+const createCourse = (name) => ({
+  id: 'c_' + Date.now() + Math.random(),
+  name,
+  students: [],
+  records: {},
+});
+
+const deleteCourseFromList = (courses, courseId) => {
+  if (courses.length <= 1) return courses;
+  return courses.filter((c) => c.id !== courseId);
+};
+
+const updateCourse = (courses, courseId, updater) =>
+  courses.map((c) => (c.id === courseId ? updater(c) : c));
+
+const findCourse = (courses, courseId) =>
+  courses.find((c) => c.id === courseId) || courses[0];
+
+
+// ===== js/models/student.js =====
+const parseStudentList = (text) => {
+  return text
+    .split(/\n/)
+    .map((l) => l.trim())
+    .filter((l) => l)
+    .map((line) => {
+      const m = line.match(/^(\d+)[.\s]+(.+)$/);
+      return {
+        id: Date.now() + Math.random(),
+        number: m ? m[1] : '',
+        name: m ? m[2] : line,
+      };
+    });
+};
+
+const sortStudents = (students) =>
+  [...students].sort((a, b) => (parseInt(a.number) || 999) - (parseInt(b.number) || 999));
+
+const removeStudent = (course, studentId) => ({
+  ...course,
+  students: course.students.filter((s) => s.id !== studentId),
+});
+
+const addStudents = (course, newStudents) => ({
+  ...course,
+  students: [...course.students, ...newStudents],
+});
+
+
+// ===== js/models/record.js =====
+const getRecord = (course, date, period, studentId) => {
+  const raw = course.records?.[date]?.[period]?.[studentId];
+  if (typeof raw === 'object' && raw !== null) return raw.attendance || 'PRESENT';
+  return raw || 'PRESENT';
+};
+
+const getRecordObj = (course, date, period, studentId) =>
+  course.records?.[date]?.[period]?.[studentId] || null;
+
+const setAttendance = (course, date, period, studentId, statusId) => {
+  const dayRec = course.records[date] || {};
+  const periodRec = dayRec[period] || {};
+  const existing = periodRec[studentId];
+
+  let updated;
+  if (typeof existing === 'object' && existing !== null) {
+    updated = { ...existing, attendance: statusId };
+  } else {
+    updated = { attendance: statusId };
+  }
+
+  return {
+    ...course,
+    records: {
+      ...course.records,
+      [date]: {
+        ...dayRec,
+        [period]: { ...periodRec, [studentId]: updated },
+      },
+    },
+  };
+};
+
+const setRecordField = (course, date, period, studentId, field, value) => {
+  const dayRec = course.records[date] || {};
+  const periodRec = dayRec[period] || {};
+  const existing = periodRec[studentId];
+
+  let recordObj;
+  if (typeof existing === 'object' && existing !== null) {
+    recordObj = { ...existing };
+  } else if (typeof existing === 'string') {
+    recordObj = { attendance: existing };
+  } else {
+    recordObj = { attendance: 'PRESENT' };
+  }
+
+  recordObj[field] = value;
+
+  return {
+    ...course,
+    records: {
+      ...course.records,
+      [date]: {
+        ...dayRec,
+        [period]: { ...periodRec, [studentId]: recordObj },
+      },
+    },
+  };
+};
+
+const quickToggle = (course, date, period, studentId) => {
+  const current = getRecord(course, date, period, studentId);
+  const next = current === 'PRESENT' ? 'ABSENT' : 'PRESENT';
+  return setAttendance(course, date, period, studentId, next);
+};
+
+const getPeriodStats = (students, records, date, period) => {
+  const rec = records?.[date]?.[period] || {};
+  let p = 0, a = 0, o = 0;
+  students.forEach((s) => {
+    const st = typeof rec[s.id] === 'object' ? rec[s.id]?.attendance : (rec[s.id] || 'PRESENT');
+    if (st === 'PRESENT') p++;
+    else if (st === 'ABSENT') a++;
+    else o++;
+  });
+  return { p, a, o, t: students.length };
+};
+
+// --- 課堂紀錄：行為、作業、備註 ---
+
+const getFullRecord = (course, date, period, studentId) => {
+  const raw = course.records?.[date]?.[period]?.[studentId];
+  if (!raw) return { attendance: 'PRESENT', behaviors: [], homework: 'NONE', note: '' };
+  if (typeof raw === 'string') return { attendance: raw, behaviors: [], homework: 'NONE', note: '' };
+  return {
+    attendance: raw.attendance || 'PRESENT',
+    behaviors: raw.behaviors || [],
+    homework: raw.homework || 'NONE',
+    note: raw.note || '',
+  };
+};
+
+const ensureRecordObj = (existing) => {
+  if (typeof existing === 'object' && existing !== null) return { ...existing };
+  if (typeof existing === 'string') return { attendance: existing, behaviors: [], homework: 'NONE', note: '' };
+  return { attendance: 'PRESENT', behaviors: [], homework: 'NONE', note: '' };
+};
+
+const toggleBehavior = (course, date, period, studentId, behaviorId) => {
+  const dayRec = course.records[date] || {};
+  const periodRec = dayRec[period] || {};
+  const recordObj = ensureRecordObj(periodRec[studentId]);
+
+  const behaviors = recordObj.behaviors || [];
+  recordObj.behaviors = behaviors.includes(behaviorId)
+    ? behaviors.filter((b) => b !== behaviorId)
+    : [...behaviors, behaviorId];
+
+  return {
+    ...course,
+    records: {
+      ...course.records,
+      [date]: {
+        ...dayRec,
+        [period]: { ...periodRec, [studentId]: recordObj },
+      },
+    },
+  };
+};
+
+const setHomeworkStatus = (course, date, period, studentId, status) => {
+  const dayRec = course.records[date] || {};
+  const periodRec = dayRec[period] || {};
+  const recordObj = ensureRecordObj(periodRec[studentId]);
+  recordObj.homework = status;
+
+  return {
+    ...course,
+    records: {
+      ...course.records,
+      [date]: {
+        ...dayRec,
+        [period]: { ...periodRec, [studentId]: recordObj },
+      },
+    },
+  };
+};
+
+const setStudentNote = (course, date, period, studentId, note) => {
+  const dayRec = course.records[date] || {};
+  const periodRec = dayRec[period] || {};
+  const recordObj = ensureRecordObj(periodRec[studentId]);
+  recordObj.note = note;
+
+  return {
+    ...course,
+    records: {
+      ...course.records,
+      [date]: {
+        ...dayRec,
+        [period]: { ...periodRec, [studentId]: recordObj },
+      },
+    },
+  };
+};
+
+const calcBehaviorScore = (behaviors, behaviorConfig) => {
+  return behaviors.reduce((sum, bId) => {
+    const cfg = behaviorConfig.find((c) => c.id === bId);
+    if (!cfg) return sum;
+    return sum + (cfg.penalty || 0) + (cfg.bonus || 0);
+  }, 0);
+};
+
+const getCourseBehaviorSummary = (course, date, students, behaviorConfig) => {
+  const periodRec = course.records?.[date] || {};
+  const summary = {};
+  students.forEach((s) => {
+    let totalScore = 0;
+    const allBehaviors = [];
+    Object.values(periodRec).forEach((periodData) => {
+      const raw = periodData?.[s.id];
+      if (!raw || typeof raw === 'string') return;
+      (raw.behaviors || []).forEach((bId) => {
+        allBehaviors.push(bId);
+        const cfg = behaviorConfig.find((c) => c.id === bId);
+        if (cfg) totalScore += (cfg.penalty || 0) + (cfg.bonus || 0);
+      });
+    });
+    summary[s.id] = { score: totalScore, behaviors: allBehaviors };
+  });
+  return summary;
+};
+
+// --- Phase 2: 統計彙整 ---
+
+const getStudentFullStats = (course, studentId, behaviorConfig) => {
+  const records = course.records || {};
+  let totalScore = 0;
+  const behaviorCounts = {};
+  let present = 0, absent = 0, late = 0, leaveEarly = 0, sick = 0, personal = 0, official = 0;
+  let homeworkDone = 0, homeworkTotal = 0;
+  let totalPeriods = 0;
+
+  Object.values(records).forEach((dayRec) => {
+    Object.values(dayRec).forEach((periodRec) => {
+      const raw = periodRec?.[studentId];
+      if (!raw) return;
+      totalPeriods++;
+
+      const att = typeof raw === 'string' ? raw : (raw.attendance || 'PRESENT');
+      if (att === 'PRESENT') present++;
+      else if (att === 'ABSENT') absent++;
+      else if (att === 'LATE') late++;
+      else if (att === 'LEAVE_EARLY') leaveEarly++;
+      else if (att === 'SICK') sick++;
+      else if (att === 'PERSONAL') personal++;
+      else if (att === 'OFFICIAL') official++;
+
+      const hw = typeof raw === 'object' ? raw.homework : null;
+      if (hw && hw !== 'NONE') {
+        homeworkTotal++;
+        if (hw === 'DONE') homeworkDone++;
+      }
+
+      const behaviors = typeof raw === 'object' ? (raw.behaviors || []) : [];
+      behaviors.forEach((bId) => {
+        behaviorCounts[bId] = (behaviorCounts[bId] || 0) + 1;
+        const cfg = behaviorConfig.find((c) => c.id === bId);
+        if (cfg) totalScore += (cfg.penalty || 0) + (cfg.bonus || 0);
+      });
+    });
+  });
+
+  const attendanceRate = totalPeriods > 0 ? Math.round((present / totalPeriods) * 100) : 100;
+  const homeworkRate = homeworkTotal > 0 ? Math.round((homeworkDone / homeworkTotal) * 100) : 100;
+
+  return {
+    score: totalScore,
+    attendance: { present, absent, late, leaveEarly, sick, personal, official, total: totalPeriods, rate: attendanceRate },
+    homework: { done: homeworkDone, total: homeworkTotal, rate: homeworkRate },
+    behaviorCounts,
+  };
+};
+
+const getDailyTrend = (course, students, periodConfig) => {
+  const dates = Object.keys(course.records).sort();
+  return dates.map((date) => {
+    let p = 0, a = 0, o = 0;
+    const dayRec = course.records[date] || {};
+    students.forEach((s) => {
+      let hasRecord = false;
+      periodConfig.forEach((period) => {
+        const raw = dayRec[period]?.[s.id];
+        if (!raw) return;
+        hasRecord = true;
+        const att = typeof raw === 'string' ? raw : (raw.attendance || 'PRESENT');
+        if (att === 'PRESENT') p++;
+        else if (att === 'ABSENT') a++;
+        else o++;
+      });
+      if (!hasRecord) p++;
+    });
+    const total = students.length * periodConfig.length || 1;
+    return {
+      date,
+      present: p,
+      absent: a,
+      other: o,
+      rate: Math.round((p / total) * 100),
+    };
+  });
+};
+
+const getBehaviorDistribution = (course, students, behaviorConfig) => {
+  const dist = {};
+  behaviorConfig.forEach((b) => { dist[b.id] = 0; });
+
+  Object.values(course.records).forEach((dayRec) => {
+    Object.values(dayRec).forEach((periodRec) => {
+      students.forEach((s) => {
+        const raw = periodRec?.[s.id];
+        if (!raw || typeof raw === 'string') return;
+        (raw.behaviors || []).forEach((bId) => {
+          if (dist[bId] !== undefined) dist[bId]++;
+        });
+      });
+    });
+  });
+
+  return behaviorConfig
+    .map((b) => ({ ...b, count: dist[b.id] || 0 }))
+    .sort((a, b) => b.count - a.count);
+};
+
+const getHomeworkStats = (course, students) => {
+  const stats = { DONE: 0, NOT_DONE: 0, LATE: 0, NONE: 0 };
+  Object.values(course.records).forEach((dayRec) => {
+    Object.values(dayRec).forEach((periodRec) => {
+      students.forEach((s) => {
+        const raw = periodRec?.[s.id];
+        if (!raw || typeof raw === 'string') return;
+        const hw = raw.homework || 'NONE';
+        stats[hw] = (stats[hw] || 0) + 1;
+      });
+    });
+  });
+  return stats;
+};
+
+
+// ===== js/utils/anonymize.js =====
+const anonymizeName = (name) => {
+  if (!name) return '';
+  if (name.length === 2) return 'O' + name.slice(1);
+  if (name.length === 3) return name[0] + 'O' + name.slice(2);
+  if (name.length === 4) return name.slice(0, 2) + 'O' + name.slice(3);
+  return name.length > 4 ? name.slice(0, -2) + 'O' + name.slice(-1) : name;
+};
+
+
+// ===== js/utils/report.js =====
+
+
+
+
+
+const generateReport = (course, date, period) => {
+  const sorted = sortStudents(course.students);
+  const groups = { ABSENT: [], LATE: [], LEAVE_EARLY: [], SICK: [], PERSONAL: [], OFFICIAL: [] };
+  let presentCount = 0;
+
+  sorted.forEach((s) => {
+    const st = getRecord(course, date, period, s.id);
+    if (st === 'PRESENT') {
+      presentCount++;
+    } else if (groups[st]) {
+      const num = s.number ? s.number + '.' : '';
+      groups[st].push(`${num}${anonymizeName(s.name)}`);
+    }
+  });
+
+  let report = `🏫 ${course.name}\n📅 ${date} (${period})\n📊 應到 ${sorted.length} / 實到 ${presentCount}\n------------------\n`;
+
+  const labels = {
+    ABSENT: '❌ 缺席',
+    LATE: '⚠️ 遲到',
+    LEAVE_EARLY: '🏃 早退',
+    SICK: '😷 病假',
+    PERSONAL: '🏠 事假',
+    OFFICIAL: '🏢 公假',
+  };
+
+  for (const [key, list] of Object.entries(groups)) {
+    if (list.length > 0) {
+      report += `${labels[key]}：${list.join('、')}\n`;
+    }
+  }
+
+  if (Object.values(groups).every((arr) => arr.length === 0)) {
+    report += '✅ 全員到齊\n';
+  }
+
+  return report;
+};
+
+const copyToClipboard = (text) => {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    return true;
+  } catch {
+    return false;
+  } finally {
+    document.body.removeChild(ta);
+  }
+};
+
+
+// ===== js/services/cloudSync.js =====
+
+
+
+
+const backupReport = async (scriptUrl, course, date, period) => {
+  const sorted = sortStudents(course.students);
+  const records = course.records?.[date]?.[period] || {};
+
+  const payload = {
+    type: 'backup_report',
+    course: course.name,
+    date,
+    period,
+    students: sorted.map((s) => ({
+      number: s.number,
+      name: s.name,
+      statusLabel: STATUS_CONFIG[getRecord(course, date, period, s.id)].label,
+    })),
+  };
+
+  const res = await fetch(scriptUrl, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return res;
+};
+
+const syncUpload = async (scriptUrl, courses, periodConfig) => {
+  const payload = { type: 'sync_upload', payload: { courses, periodConfig } };
+  const res = await fetch(scriptUrl, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return res;
+};
+
+const syncDownload = async (scriptUrl) => {
+  const res = await fetch(scriptUrl + '?action=download');
+  const data = await res.json();
+  return data;
+};
+
+
+// ===== js/hooks/useNotification.js =====
+
+
+function useNotification() {
+  const [notification, setNotification] = useState('');
+
+  const showToast = useCallback((msg) => {
+    setNotification(msg);
+    setTimeout(() => setNotification(''), 3000);
+  }, []);
+
+  return { notification, showToast };
+}
+
+
+// ===== js/hooks/useCourses.js =====
+
+
+
+
+
+
+
+function useCourses() {
+  const [courses, setCourses] = useState(() => loadCourses());
+  const [activeCourseId, setActiveCourseId] = useState(() => loadActiveCourseId(courses));
+  const [periodConfig, setPeriodConfig] = useState(() => loadPeriodConfig() || DEFAULT_PERIODS);
+  const [scriptUrl, setScriptUrl] = useState(() => loadScriptUrl());
+  const [customBehaviors, setCustomBehaviors] = useState(() => loadCustomBehaviors());
+
+  const activeCourseIdRef = useRef(activeCourseId);
+  activeCourseIdRef.current = activeCourseId;
+
+  const activeCourse = findCourse(courses, activeCourseId);
+
+  useEffect(() => saveCourses(courses), [courses]);
+  useEffect(() => saveActiveCourseId(activeCourseId), [activeCourseId]);
+  useEffect(() => savePeriodConfig(periodConfig), [periodConfig]);
+  useEffect(() => saveScriptUrl(scriptUrl), [scriptUrl]);
+  useEffect(() => saveCustomBehaviors(customBehaviors), [customBehaviors]);
+
+  const behaviors = [...DEFAULT_BEHAVIORS, ...customBehaviors];
+
+  const addCustomBehavior = (behavior) => {
+    const existing = [...DEFAULT_BEHAVIORS, ...customBehaviors];
+    if (existing.some((b) => b.label === behavior.label)) return false;
+    setCustomBehaviors((prev) => [...prev, behavior]);
+    return true;
+  };
+
+  const deleteCustomBehavior = (behaviorId) => {
+    setCustomBehaviors((prev) => prev.filter((b) => b.id !== behaviorId));
+  };
+
+  const updateActiveCourse = (updater) => {
+    const cid = activeCourseIdRef.current;
+    setCourses((prev) => prev.map((c) => (c.id === cid ? updater(c) : c)));
+  };
+
+  const addNewCourse = (names) => {
+    const newCourses = names.map((n) => createCourse(n));
+    setCourses((prev) => [...prev, ...newCourses]);
+    setActiveCourseId(newCourses[0].id);
+  };
+
+  const deleteCourse = (courseId) => {
+    if (courses.length <= 1) return;
+    const filtered = deleteCourseFromList(courses, courseId);
+    setCourses(filtered);
+    if (activeCourseId === courseId) {
+      setActiveCourseId(filtered[0].id);
+    }
+  };
+
+  const importStudents = (text) => {
+    const newStudents = parseStudentList(text);
+    updateActiveCourse((c) => addStudents(c, newStudents));
+  };
+
+  const deleteStudent = (studentId) => {
+    updateActiveCourse((c) => removeStudent(c, studentId));
+  };
+
+  const setStudentStatus = (studentId, statusId, date, period) => {
+    updateActiveCourse((c) => setAttendance(c, date, period, studentId, statusId));
+  };
+
+  const quickToggleStudent = (studentId, date, period) => {
+    updateActiveCourse((c) => quickToggle(c, date, period, studentId));
+  };
+
+  const toggleStudentBehavior = (studentId, date, period, behaviorId) => {
+    updateActiveCourse((c) => toggleBehavior(c, date, period, studentId, behaviorId));
+  };
+
+  const setStudentHomework = (studentId, date, period, status) => {
+    updateActiveCourse((c) => setHomeworkStatus(c, date, period, studentId, status));
+  };
+
+  const setStudentNoteText = (studentId, date, period, note) => {
+    updateActiveCourse((c) => setStudentNote(c, date, period, studentId, note));
+  };
+
+  return {
+    courses,
+    setCourses,
+    activeCourse,
+    activeCourseId,
+    setActiveCourseId,
+    periodConfig,
+    setPeriodConfig,
+    scriptUrl,
+    setScriptUrl,
+    behaviors,
+    customBehaviors,
+    addCustomBehavior,
+    deleteCustomBehavior,
+    addNewCourse,
+    deleteCourse,
+    importStudents,
+    deleteStudent,
+    setStudentStatus,
+    quickToggleStudent,
+    toggleStudentBehavior,
+    setStudentHomework,
+    setStudentNoteText,
+    updateActiveCourse,
+  };
+}
+
+
+// ===== js/components/Icons.jsx =====
+
+
+const IconBase = ({ children, size = 20, className = '' }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{children}</svg>
+);
+
+const Icons = {
+  Plus: (p) => <IconBase {...p}><path d="M5 12h14"/><path d="M12 5v14"/></IconBase>,
+  Trash2: (p) => <IconBase {...p}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></IconBase>,
+  Copy: (p) => <IconBase {...p}><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></IconBase>,
+  UserCheck: (p) => <IconBase {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></IconBase>,
+  UserX: (p) => <IconBase {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" x2="22" y1="8" y2="13"/><line x1="22" x2="17" y1="8" y2="13"/></IconBase>,
+  Clock: (p) => <IconBase {...p}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></IconBase>,
+  Menu: (p) => <IconBase {...p}><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></IconBase>,
+  BookOpen: (p) => <IconBase {...p}><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></IconBase>,
+  Check: (p) => <IconBase {...p}><polyline points="20 6 9 17 4 12"/></IconBase>,
+  X: (p) => <IconBase {...p}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></IconBase>,
+  Upload: (p) => <IconBase {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></IconBase>,
+  List: (p) => <IconBase {...p}><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></IconBase>,
+  LogOut: (p) => <IconBase {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></IconBase>,
+  Thermometer: (p) => <IconBase {...p}><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></IconBase>,
+  Briefcase: (p) => <IconBase {...p}><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></IconBase>,
+  Coffee: (p) => <IconBase {...p}><path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><line x1="6" x2="6" y1="2" y2="4"/><line x1="10" x2="10" y1="2" y2="4"/><line x1="14" x2="14" y1="2" y2="4"/></IconBase>,
+  Cloud: (p) => <IconBase {...p}><path d="M17.5 19c0-3.037-2.463-5.5-5.5-5.5S6.5 15.963 6.5 19"/><path d="M17.5 19c2.485 0 4.5-2.015 4.5-4.5S19.985 10 17.5 10c-.15 0-.298.008-.445.023A6.5 6.5 0 0 0 5.055 13.5c-.015.163-.055.322-.055.485C5 16.5 7 19 9.5 19h8z"/></IconBase>,
+  CloudUpload: (p) => <IconBase {...p}><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></IconBase>,
+  CloudDownload: (p) => <IconBase {...p}><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m8 17 4 4 4-4"/></IconBase>,
+  Settings: (p) => <IconBase {...p}><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></IconBase>,
+  ShieldCheck: (p) => <IconBase {...p}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></IconBase>,
+  LayoutGrid: (p) => <IconBase {...p}><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></IconBase>,
+  Monitor: (p) => <IconBase {...p}><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></IconBase>,
+  Save: (p) => <IconBase {...p}><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></IconBase>,
+  Download: (p) => <IconBase {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></IconBase>,
+};
+
+const iconMap = {
+  UserCheck: Icons.UserCheck,
+  UserX: Icons.UserX,
+  Clock: Icons.Clock,
+  LogOut: Icons.LogOut,
+  Thermometer: Icons.Thermometer,
+  Coffee: Icons.Coffee,
+  Briefcase: Icons.Briefcase,
+};
+
+const getStatusIcon = (iconType, props = {}) => {
+  const Icon = iconMap[iconType];
+  return Icon ? <Icon {...props} /> : null;
+};
+
+
+// ===== js/components/BehaviorTags.jsx =====
+
+
+
+function BehaviorTags({ behaviors, selectedBehaviors, onToggle, onOpenManager }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="text-sm font-bold text-gray-500">課堂行為</h4>
+        <button onClick={onOpenManager}
+          className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-100">
+          <Icons.Plus size={12}/> 新增
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {behaviors.map((b) => {
+          const isActive = selectedBehaviors.includes(b.id);
+          return (
+            <button
+              key={b.id}
+              onClick={() => onToggle(b.id)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${
+                isActive
+                  ? `${b.color} ring-1 ring-offset-1 scale-105`
+                  : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              <span>{b.icon}</span>
+              <span>{b.label}</span>
+              {b.penalty < 0 && (
+                <span className={`text-xs ml-0.5 ${isActive ? 'opacity-80' : 'opacity-40'}`}>
+                  {b.penalty}
+                </span>
+              )}
+              {b.bonus > 0 && (
+                <span className={`text-xs ml-0.5 ${isActive ? 'opacity-80' : 'opacity-40'}`}>
+                  +{b.bonus}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ===== js/components/Header.jsx =====
+
+
+
+function Header({
+  activeCourseName, currentDate, setCurrentDate,
+  currentPeriod, setCurrentPeriod, periodConfig, stats,
+  setIsSidebarOpen,
+}) {
+  return (
+    <header className="bg-slate-800 text-white shadow-lg z-20">
+      <div className="flex justify-between items-center p-3 lg:px-6">
+        <div className="flex items-center gap-2 overflow-hidden">
+          <button onClick={() => setIsSidebarOpen(true)} className="md:hidden p-2 hover:bg-slate-700 rounded-full"><Icons.Menu size={20}/></button>
+          <div className="font-bold text-lg truncate max-w-[150px] md:max-w-xs">{activeCourseName}</div>
+        </div>
+        <div className="flex gap-2">
+          <div className="flex items-center bg-slate-700 rounded-lg px-2 py-1 border border-slate-600">
+            <input type="date" value={currentDate} onChange={(e) => setCurrentDate(e.target.value)}
+              className="bg-transparent text-white border-none outline-none text-xs w-[85px] cursor-pointer"/>
+          </div>
+          <div className="relative">
+            <select value={currentPeriod} onChange={(e) => setCurrentPeriod(e.target.value)}
+              className="appearance-none bg-indigo-600 text-white pl-3 pr-8 py-1 rounded-lg text-sm font-bold border border-indigo-500 cursor-pointer">
+              {periodConfig.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-indigo-200"><Icons.Clock size={12}/></div>
+          </div>
+        </div>
+      </div>
+      <div className="grid grid-cols-4 gap-px bg-slate-700 border-t border-slate-600 text-center py-2">
+        <div><span className="text-[10px] text-slate-400 block">應到</span><span className="text-lg font-bold text-slate-300">{stats.t}</span></div>
+        <div><span className="text-[10px] text-slate-400 block">實到</span><span className="text-lg font-bold text-green-400">{stats.p}</span></div>
+        <div><span className="text-[10px] text-slate-400 block">缺席</span><span className="text-lg font-bold text-red-400">{stats.a}</span></div>
+        <div><span className="text-[10px] text-slate-400 block">其他</span><span className="text-lg font-bold text-yellow-400">{stats.o}</span></div>
+      </div>
+    </header>
+  );
+}
+
+
+// ===== js/components/Sidebar.jsx =====
+
+
+
+
+function Sidebar({
+  courses, activeCourseId, setActiveCourseId,
+  periodConfig, scriptUrl, setScriptUrl, setPeriodConfig,
+  addNewCourse, deleteCourse,
+  setModalType, setInputText, setIsSidebarOpen,
+  setCourses, showToast,
+  onOpenScoreBoard, onOpenStatsPanel,
+}) {
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleCloudSyncUpload = async () => {
+    if (!scriptUrl) { setModalType('CLOUD_SETUP'); return; }
+    if (!window.confirm('⚠️ 確定要將「目前所有的課程、學生、紀錄」上傳覆蓋雲端存檔嗎？')) return;
+    setIsSyncing(true);
+    try {
+      await syncUpload(scriptUrl, courses, periodConfig);
+      showToast('⬆️ 設定已上傳至雲端！');
+    } catch (e) { showToast('❌ 上傳失敗'); }
+    finally { setIsSyncing(false); }
+  };
+
+  const handleCloudSyncDownload = async () => {
+    if (!scriptUrl) { setModalType('CLOUD_SETUP'); return; }
+    if (!window.confirm('⚠️ 警告：確定要從雲端還原資料嗎？\n(這將會「清除並覆蓋」您目前手機上的所有資料！)')) return;
+    setIsSyncing(true);
+    try {
+      const data = await syncDownload(scriptUrl);
+      if (data.result === 'empty') {
+        showToast('☁️ 雲端尚無備份資料');
+      } else if (data.courses) {
+        setCourses(data.courses);
+        if (data.periodConfig) setPeriodConfig(data.periodConfig);
+        if (!data.courses.find((c) => c.id === activeCourseId)) {
+          setActiveCourseId(data.courses[0].id);
+        }
+        showToast('⬇️ 資料還原成功！');
+        setIsSidebarOpen(false);
+      } else {
+        showToast('❌ 雲端資料格式錯誤');
+      }
+    } catch (e) {
+      showToast('❌ 下載失敗 (請檢查網址或權限)');
+    } finally { setIsSyncing(false); }
+  };
+
+  const handleDelete = (e, id) => {
+    e.stopPropagation();
+    if (courses.length <= 1) return;
+    if (confirm('刪除課程？')) deleteCourse(id);
+  };
+
+  const openSettings = (type, defaultText) => {
+    setInputText(defaultText);
+    setModalType(type);
+    setIsSidebarOpen(false);
+  };
+
+  return (
+    <React.Fragment>
+      <div className="p-4 bg-slate-100 border-b flex justify-between items-center">
+        <h2 className="font-bold text-slate-700 flex items-center gap-2"><Icons.BookOpen size={18}/> 課程</h2>
+        <button onClick={() => setModalType('COURSE')} className="p-1.5 bg-indigo-100 text-indigo-600 rounded"><Icons.Plus size={18}/></button>
+      </div>
+      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        {courses.map((c) => (
+          <div key={c.id} onClick={() => { setActiveCourseId(c.id); setIsSidebarOpen(false); }}
+            className={`group flex items-center justify-between p-3 rounded-lg cursor-pointer ${activeCourseId === c.id ? 'bg-indigo-50 text-indigo-700 font-bold' : 'hover:bg-gray-100 text-gray-600'}`}>
+            <span className="truncate">{c.name}</span>
+            <div className="flex items-center gap-2">
+              {activeCourseId === c.id && <Icons.Check size={16}/>}
+              <button onClick={(e) => handleDelete(e, c.id)} className="p-1 text-gray-400 hover:text-red-500 transition-colors"><Icons.Trash2 size={14}/></button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="p-4 border-t space-y-2 bg-gray-50">
+        <div className="text-xs font-bold text-gray-400 uppercase mb-1">雲端同步 (換裝置用)</div>
+        <button disabled={isSyncing} onClick={handleCloudSyncUpload}
+          className="flex items-center w-full gap-3 p-3 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100">
+          {isSyncing ? <span className="spinner"></span> : <Icons.Save size={16}/>} 上傳設定 (備份到雲端)
+        </button>
+        <button disabled={isSyncing} onClick={handleCloudSyncDownload}
+          className="flex items-center w-full gap-3 p-3 text-sm font-medium text-orange-700 bg-orange-50 border border-orange-200 rounded-lg hover:bg-orange-100">
+          {isSyncing ? <span className="spinner"></span> : <Icons.Download size={16}/>} 下載設定 (從雲端還原)
+        </button>
+        <hr className="my-2"/>
+        <button onClick={() => openSettings('CLOUD_SETUP', scriptUrl)}
+          className={`flex items-center w-full gap-3 p-3 text-sm font-medium border rounded-lg ${scriptUrl ? 'text-green-700 bg-green-50' : 'text-gray-700 bg-white'}`}>
+          <Icons.Settings size={16}/>{scriptUrl ? '已連結 Google' : '設定雲端連結'}
+        </button>
+        <button onClick={() => openSettings('PERIOD', periodConfig.join('\n'))}
+          className="flex items-center w-full gap-3 p-3 text-sm font-medium text-gray-700 bg-white border rounded-lg">
+          <Icons.List size={16}/> 設定節次
+        </button>
+        <button onClick={() => { setModalType('IMPORT'); setIsSidebarOpen(false); }}
+          className="flex items-center w-full gap-3 p-3 text-sm font-medium text-gray-700 bg-white border rounded-lg">
+          <Icons.Upload size={16}/> 匯入名單
+        </button>
+        <hr className="my-2"/>
+        <div className="text-xs font-bold text-gray-400 uppercase mb-1">成績統計</div>
+        <button onClick={() => { onOpenScoreBoard(); setIsSidebarOpen(false); }}
+          className="flex items-center w-full gap-3 p-3 text-sm font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100">
+          <Icons.ShieldCheck size={16}/> 績效排行榜
+        </button>
+        <button onClick={() => { onOpenStatsPanel(); setIsSidebarOpen(false); }}
+          className="flex items-center w-full gap-3 p-3 text-sm font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100">
+          <Icons.Monitor size={16}/> 課堂統計圖表
+        </button>
+        <button onClick={() => setIsSidebarOpen(false)} className="md:hidden w-full py-2 text-center text-gray-500 bg-gray-200 rounded mt-2">關閉</button>
+      </div>
+    </React.Fragment>
+  );
+}
+
+
+// ===== js/components/StudentCard.jsx =====
+
+
+
+
+function StudentCard({ behaviors, student, record, onClick, onOpenRecord }) {
+  const statusKey = record.attendance;
+  const st = STATUS_CONFIG[statusKey];
+  const hwCfg = HOMEWORK_STATUS[record.homework];
+
+  const behaviorIcons = record.behaviors
+    .map((bId) => behaviors.find((b) => b.id === bId))
+    .filter(Boolean)
+    .slice(0, 4);
+
+  return (
+    <div className={`relative flex items-center p-3 bg-white rounded-xl shadow-sm border border-transparent hover:shadow-md active:scale-[0.98] ${
+      statusKey !== 'PRESENT' ? st.color.replace('text-', 'border-').replace('bg-', 'ring-1 ring-') : 'hover:border-gray-200'
+    }`}>
+      <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${st.color.replace('text-', 'bg-').split(' ')[0]}`}></div>
+
+      {/* Main area: click to quick toggle */}
+      <div className="flex-1 flex items-center cursor-pointer select-none min-w-0" onClick={onClick}>
+        <div className="w-8 pl-2 font-mono text-gray-400 font-bold text-lg">{student.number || ''}</div>
+        <div className="flex-1 px-2 min-w-0">
+          <div className="font-bold text-gray-800 text-lg truncate">{student.name}</div>
+          <div className="flex items-center gap-1 mt-0.5">
+            {behaviorIcons.map((b) => (
+              <span key={b.id} className="text-xs" title={b.label}>{b.icon}</span>
+            ))}
+            {record.behaviors.length > 4 && <span className="text-xs text-gray-400">+{record.behaviors.length - 4}</span>}
+            {record.note && <span className="text-xs text-gray-400 ml-1" title={record.note}>📝</span>}
+          </div>
+        </div>
+      </div>
+
+      {/* Right side: homework + status button */}
+      <div className="flex items-center gap-2">
+        {hwCfg && hwCfg.id !== 'NONE' && (
+          <span className="text-sm" title={hwCfg.label}>{hwCfg.icon}</span>
+        )}
+        <button onClick={(e) => { e.stopPropagation(); onOpenRecord(); }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold transition-colors ${st.color}`}>
+          {getStatusIcon(st.iconType, { size: 18 })}{st.label}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+// ===== js/components/StatusModal.jsx =====
+
+
+
+
+
+function StatusModal({ student, onSelect, onDelete, onClose }) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white w-full max-w-md rounded-t-2xl md:rounded-2xl p-6 shadow-2xl m-0 md:m-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="font-bold text-lg flex items-center gap-2">
+            <span className="px-2 py-0.5 bg-gray-100 rounded text-sm text-gray-500 font-mono">{student.number}</span>
+            {student.name}
+          </h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full"><Icons.X size={20}/></button>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          {Object.values(STATUS_CONFIG).map((c) => (
+            <button key={c.id} onClick={() => onSelect(c.id)}
+              className={`flex flex-col items-center justify-center p-3 rounded-xl border hover:scale-105 active:scale-95 ${c.color.replace('bg-', 'hover:bg-').replace('text-', 'hover:text-')}`}>
+              <div className="mb-2">{getStatusIcon(c.iconType, { size: 20 })}</div>
+              <span className="font-bold text-sm">{c.label}</span>
+            </button>
+          ))}
+        </div>
+        <div className="mt-4 pt-4 border-t flex justify-center">
+          <button onClick={onDelete} className="flex items-center gap-2 text-red-500 hover:text-red-700 hover:bg-red-50 px-4 py-2 rounded-lg transition-colors text-sm font-bold">
+            <Icons.Trash2 size={16}/> 移除此學生
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ===== js/components/ActionModals.jsx =====
+
+
+
+const titles = {
+  CLOUD_SETUP: '設定雲端連結',
+  IMPORT: '匯入名單',
+  COURSE: '新增課程',
+  PERIOD: '設定節次',
+};
+
+const placeholders = {
+  CLOUD_SETUP: 'https://script.google.com/macros/s/...',
+  IMPORT: '格式：座號 姓名 (一行一位)',
+  COURSE: '在此輸入課程名稱...',
+  PERIOD: '早自習\n第一節\n第二節\n...',
+};
+
+const descriptions = {
+  CLOUD_SETUP: '請貼上 Apps Script 網址：',
+  IMPORT: '格式：座號 姓名 (一行一位)',
+  COURSE: '每行一個課程名稱',
+  PERIOD: '每行一個節次名稱',
+};
+
+function ActionModals({ modalType, inputText, setInputText, onSubmit, onClose }) {
+  if (!modalType) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm p-4">
+      <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl flex flex-col max-h-[85vh]">
+        <div className="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-2xl">
+          <h3 className="font-bold text-lg flex items-center gap-2">{titles[modalType]}</h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded-full"><Icons.X size={20}/></button>
+        </div>
+        <div className="flex-1 p-4 flex flex-col gap-2 overflow-y-auto">
+          <p className="text-sm text-gray-500">{descriptions[modalType]}</p>
+          <textarea
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            className="flex-1 min-h-[150px] p-3 bg-gray-50 border rounded-lg resize-none focus:outline-none font-mono text-sm"
+            placeholder={placeholders[modalType]}
+          />
+        </div>
+        <div className="p-4 border-t bg-gray-50 rounded-b-2xl">
+          <button onClick={onSubmit} className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl shadow hover:bg-indigo-700">確認儲存</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ===== js/components/RecordPanel.jsx =====
+
+
+
+
+
+
+
+function RecordPanel({ behaviors, student, record, onSetStatus, onToggleBehavior, onSetHomework, onSetNote, onDelete, onClose, onOpenBehaviorManager }) {
+  const [noteText, setNoteText] = useState(record.note);
+
+  useEffect(() => { setNoteText(record.note); }, [record.note]);
+
+  const behaviorScore = calcBehaviorScore(record.behaviors, behaviors);
+  const homeworkCfg = HOMEWORK_STATUS[record.homework] || HOMEWORK_STATUS.NONE;
+
+  const handleNoteBlur = () => {
+    if (noteText !== record.note) onSetNote(noteText);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white w-full max-w-lg rounded-t-2xl md:rounded-2xl shadow-2xl m-0 md:m-4 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-2xl">
+          <div className="flex items-center gap-3">
+            <span className="px-2 py-0.5 bg-gray-200 rounded text-sm text-gray-500 font-mono">{student.number}</span>
+            <h3 className="font-bold text-lg">{student.name}</h3>
+            {behaviorScore !== 0 && (
+              <span className={`text-sm font-bold px-2 py-0.5 rounded-full ${behaviorScore > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                {behaviorScore > 0 ? '+' : ''}{behaviorScore} 分
+              </span>
+            )}
+          </div>
+          <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded-full"><Icons.X size={20}/></button>
+        </div>
+
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-5">
+          {/* Attendance Status */}
+          <div>
+            <h4 className="text-sm font-bold text-gray-500 mb-2">出缺席</h4>
+            <div className="grid grid-cols-4 gap-2">
+              {Object.values(STATUS_CONFIG).map((c) => (
+                <button key={c.id} onClick={() => onSetStatus(c.id)}
+                  className={`flex flex-col items-center justify-center p-2 rounded-xl border text-xs font-bold transition-all ${
+                    record.attendance === c.id
+                      ? `${c.color} ring-2 ring-offset-1 scale-105`
+                      : 'bg-white text-gray-400 border-gray-200 hover:bg-gray-50'
+                  }`}>
+                  {getStatusIcon(c.iconType, { size: 16 })}
+                  <span className="mt-1">{c.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Behavior Tags */}
+          <BehaviorTags behaviors={behaviors} selectedBehaviors={record.behaviors} onToggle={onToggleBehavior} onOpenManager={onOpenBehaviorManager} />
+
+          {/* Homework Status */}
+          <div>
+            <h4 className="text-sm font-bold text-gray-500 mb-2">作業狀態</h4>
+            <div className="flex gap-2">
+              {Object.values(HOMEWORK_STATUS).map((hw) => (
+                <button key={hw.id} onClick={() => onSetHomework(hw.id)}
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-xl border text-sm font-bold transition-all ${
+                    record.homework === hw.id
+                      ? `${hw.color} ring-2 ring-offset-1 scale-105`
+                      : 'bg-white text-gray-400 border-gray-200 hover:bg-gray-50'
+                  }`}>
+                  <span>{hw.icon}</span>
+                  <span>{hw.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Note */}
+          <div>
+            <h4 className="text-sm font-bold text-gray-500 mb-2">教師備註</h4>
+            <textarea
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              onBlur={handleNoteBlur}
+              placeholder="記錄這位同學本節課的表現..."
+              className="w-full p-3 bg-gray-50 border rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300 text-sm min-h-[80px]"
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t bg-gray-50 rounded-b-2xl space-y-3">
+          {onDelete && (
+            <button onClick={() => { if (confirm(`確定要將「${student.name}」從名單中移除嗎？`)) { onDelete(); onClose(); } }}
+              className="flex items-center justify-center gap-2 w-full py-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-xl transition-colors text-sm font-bold">
+              <Icons.Trash2 size={16}/> 移除此學生
+            </button>
+          )}
+          <button onClick={onClose} className="w-full py-2.5 bg-indigo-600 text-white font-bold rounded-xl shadow hover:bg-indigo-700">完成</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ===== js/components/BehaviorManager.jsx =====
+
+
+
+
+const EMOJI_LIST = ['📱','😴','🗣️','😵','💬','🍔','🚶','🙋','🤝','💡','📚','✏️','🎒','🖊️','😠','🫥','🎧','📖','💤','🎮'];
+
+const COLOR_LIST = [
+  'bg-red-50 text-red-600 border-red-200',
+  'bg-orange-50 text-orange-600 border-orange-200',
+  'bg-yellow-50 text-yellow-600 border-yellow-200',
+  'bg-amber-50 text-amber-600 border-amber-200',
+  'bg-green-50 text-green-600 border-green-200',
+  'bg-blue-50 text-blue-600 border-blue-200',
+  'bg-indigo-50 text-indigo-600 border-indigo-200',
+  'bg-purple-50 text-purple-600 border-purple-200',
+  'bg-pink-50 text-pink-600 border-pink-200',
+  'bg-cyan-50 text-cyan-600 border-cyan-200',
+];
+
+function BehaviorManager({ customBehaviors, addCustomBehavior, deleteCustomBehavior, onClose }) {
+  const [label, setLabel] = useState('');
+  const [icon, setIcon] = useState('📱');
+  const [score, setScore] = useState(0);
+  const [isBonus, setIsBonus] = useState(false);
+
+  const handleAdd = () => {
+    const trimmed = label.trim();
+    if (!trimmed) return;
+    const penalty = isBonus ? 0 : -Math.abs(score);
+    const bonus = isBonus ? Math.abs(score) : 0;
+    const newBehavior = {
+      id: 'b_' + Date.now() + Math.random(),
+      label: trimmed,
+      icon: icon || '⭐',
+      penalty,
+      bonus,
+      color: COLOR_LIST[Math.floor(Math.random() * COLOR_LIST.length)],
+    };
+    if (addCustomBehavior(newBehavior)) {
+      setLabel(''); setScore(0);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[65] flex items-end md:items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white w-full max-w-md rounded-t-2xl md:rounded-2xl shadow-2xl m-0 md:m-4 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-2xl">
+          <h3 className="font-bold text-lg flex items-center gap-2"><Icons.Plus size={18}/> 管理行為項目</h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded-full"><Icons.X size={20}/></button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-5">
+          {/* Add form */}
+          <div className="bg-gray-50 rounded-xl p-4 space-y-3">
+            <h4 className="text-sm font-bold text-gray-600 mb-1">新增行為</h4>
+            <input
+              type="text"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="行為名稱（例：塗鴉、代班代答）"
+              className="w-full p-2.5 bg-white border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            />
+            <div className="flex flex-wrap gap-1.5">
+              {EMOJI_LIST.map((em) => (
+                <button key={em} onClick={() => setIcon(em)}
+                  className={`w-8 h-8 text-lg rounded flex items-center justify-center ${icon === em ? 'bg-indigo-100 ring-2 ring-indigo-300' : 'bg-gray-100 hover:bg-gray-200'}`}>
+                  {em}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-3">
+              <select value={isBonus ? 'bonus' : (score < 0 ? 'minus' : 'zero')}
+                onChange={(e) => { setIsBonus(e.target.value === 'bonus'); setScore(0); }}
+                className="p-2 border rounded-lg text-sm bg-white">
+                <option value="minus">扣分</option>
+                <option value="bonus">加分</option>
+                <option value="zero">不分</option>
+              </select>
+              <input type="number" min="1" max="20" value={Math.abs(score)}
+                onChange={(e) => setScore(parseInt(e.target.value) || 0)}
+                disabled={!isBonus && score === 0 ? false : false}
+                className="w-20 p-2 border rounded-lg text-sm text-center bg-white"
+              />
+              <span className="text-sm text-gray-500">分</span>
+            </div>
+            <button onClick={handleAdd}
+              className="w-full py-2.5 bg-indigo-600 text-white font-bold rounded-xl shadow hover:bg-indigo-700">
+              ＋ 新增行為
+            </button>
+          </div>
+
+          {/* Custom behaviors list */}
+          <div>
+            <h4 className="text-sm font-bold text-gray-600 mb-2">自訂行為（{customBehaviors.length}）</h4>
+            {customBehaviors.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-4">尚無自訂行為</p>
+            ) : (
+              <div className="space-y-2">
+                {customBehaviors.map((b) => (
+                  <div key={b.id} className="flex items-center justify-between p-2.5 bg-white rounded-lg border">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">{b.icon}</span>
+                      <span className="font-bold text-sm">{b.label}</span>
+                      <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${b.bonus > 0 ? 'bg-green-100 text-green-600' : b.penalty < 0 ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'}`}>
+                        {b.bonus > 0 ? '+' + b.bonus : (b.penalty < 0 ? b.penalty : '0')}
+                      </span>
+                    </div>
+                    <button onClick={() => deleteCustomBehavior(b.id)}
+                      className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg"><Icons.Trash2 size={16}/></button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="p-4 border-t bg-gray-50 rounded-b-2xl">
+          <button onClick={onClose} className="w-full py-2.5 bg-indigo-600 text-white font-bold rounded-xl shadow hover:bg-indigo-700">完成</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===== js/components/ScoreBoard.jsx =====
+
+
+
+
+
+
+function ScoreBoard({ behaviors, course, onClose }) {
+  const [sortBy, setSortBy] = useState('score');
+  const [sortDir, setSortDir] = useState('asc');
+  const [expandedId, setExpandedId] = useState(null);
+
+  const students = useMemo(() => sortStudents(course.students), [course.students]);
+
+  const statsMap = useMemo(() => {
+    const map = {};
+    students.forEach((s) => {
+      map[s.id] = getStudentFullStats(course, s.id, behaviors);
+    });
+    return map;
+  }, [course, students]);
+
+  const sorted = useMemo(() => {
+    const arr = [...students];
+    arr.sort((a, b) => {
+      const sa = statsMap[a.id];
+      const sb = statsMap[b.id];
+      let va, vb;
+      if (sortBy === 'score') { va = sa.score; vb = sb.score; }
+      else if (sortBy === 'attendance') { va = sa.attendance.rate; vb = sb.attendance.rate; }
+      else if (sortBy === 'homework') { va = sa.homework.rate; vb = sb.homework.rate; }
+      else { va = sa.behaviorCounts ? Object.values(sa.behaviorCounts).reduce((s, v) => s + v, 0) : 0;
+             vb = sb.behaviorCounts ? Object.values(sb.behaviorCounts).reduce((s, v) => s + v, 0) : 0; }
+      return sortDir === 'asc' ? va - vb : vb - va;
+    });
+    return arr;
+  }, [students, statsMap, sortBy, sortDir]);
+
+  const toggleSort = (field) => {
+    if (sortBy === field) setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
+    else { setSortBy(field); setSortDir('asc'); }
+  };
+
+  const getRateLabel = (rate) => {
+    const t = ATTENDANCE_RATE_THRESHOLDS.find((t) => rate >= t.min);
+    return t || ATTENDANCE_RATE_THRESHOLDS[ATTENDANCE_RATE_THRESHOLDS.length - 1];
+  };
+
+  const SortHeader = ({ field, label }) => (
+    <button onClick={() => toggleSort(field)}
+      className={`text-xs font-bold cursor-pointer hover:text-indigo-600 flex items-center gap-0.5 ${sortBy === field ? 'text-indigo-600' : 'text-gray-400'}`}>
+      {label}
+      {sortBy === field && <span>{sortDir === 'asc' ? '↑' : '↓'}</span>}
+    </button>
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white w-full max-w-2xl rounded-t-2xl md:rounded-2xl shadow-2xl m-0 md:m-4 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-2xl">
+          <h3 className="font-bold text-lg flex items-center gap-2">
+            <Icons.ShieldCheck size={20} className="text-indigo-500"/> 績效排行榜
+          </h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded-full"><Icons.X size={20}/></button>
+        </div>
+
+        {/* Table Header */}
+        <div className="px-4 py-2 border-b bg-gray-50 grid grid-cols-[2.5rem_1fr_4rem_4rem_4rem_4rem] gap-2 items-center">
+          <span className="text-xs text-gray-400">#</span>
+          <span className="text-xs text-gray-400">姓名</span>
+          <SortHeader field="score" label="績效分"/>
+          <SortHeader field="attendance" label="出勤率"/>
+          <SortHeader field="homework" label="作業率"/>
+          <SortHeader field="behaviors" label="行為數"/>
+        </div>
+
+        {/* List */}
+        <div className="flex-1 overflow-y-auto">
+          {sorted.map((s, i) => {
+            const st = statsMap[s.id];
+            const rateInfo = getRateLabel(st.attendance.rate);
+            const isExpanded = expandedId === s.id;
+            const behaviorCount = Object.values(st.behaviorCounts).reduce((sum, v) => sum + v, 0);
+
+            return (
+              <div key={s.id} className="border-b border-gray-100">
+                <div className="px-4 py-3 grid grid-cols-[2.5rem_1fr_4rem_4rem_4rem_4rem] gap-2 items-center hover:bg-gray-50 cursor-pointer"
+                  onClick={() => setExpandedId(isExpanded ? null : s.id)}>
+                  <span className="text-sm text-gray-400 font-mono">{i + 1}</span>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-mono text-xs text-gray-400">{s.number || ''}</span>
+                    <span className="font-bold text-sm truncate">{s.name}</span>
+                  </div>
+                  <span className={`text-sm font-bold ${st.score > 0 ? 'text-green-600' : st.score < 0 ? 'text-red-600' : 'text-gray-500'}`}>
+                    {st.score > 0 ? '+' : ''}{st.score}
+                  </span>
+                  <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${rateInfo.color} ${rateInfo.bg}`}>
+                    {st.attendance.rate}%
+                  </span>
+                  <span className={`text-xs font-bold ${st.homework.rate >= 80 ? 'text-green-600' : st.homework.rate >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+                    {st.homework.total > 0 ? st.homework.rate + '%' : '-'}
+                  </span>
+                  <span className="text-xs text-gray-500">{behaviorCount}</span>
+                </div>
+
+                {/* Expanded Detail */}
+                {isExpanded && (
+                  <div className="px-4 pb-3 pt-1 bg-gray-50 text-xs space-y-2">
+                    <div className="flex gap-4">
+                      <div>
+                        <span className="text-gray-400">出席 </span>
+                        <span className="font-bold text-green-600">{st.attendance.present}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400">缺席 </span>
+                        <span className="font-bold text-red-600">{st.attendance.absent}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400">遲到 </span>
+                        <span className="font-bold text-yellow-600">{st.attendance.late}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400">早退 </span>
+                        <span className="font-bold text-orange-600">{st.attendance.leaveEarly}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400">假別 </span>
+                        <span className="font-bold text-purple-600">{st.attendance.sick + st.attendance.personal + st.attendance.official}</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {behaviors.map((b) => {
+                        const count = st.behaviorCounts[b.id] || 0;
+                        if (count === 0) return null;
+                        return (
+                          <span key={b.id} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-white rounded border text-gray-600">
+                            {b.icon} {count}
+                          </span>
+                        );
+                      })}
+                      {behaviorCount === 0 && <span className="text-gray-400">無行為紀錄</span>}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {sorted.length === 0 && (
+            <div className="p-8 text-center text-gray-400">尚無學生資料</div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t bg-gray-50 rounded-b-2xl">
+          <button onClick={onClose} className="w-full py-2.5 bg-indigo-600 text-white font-bold rounded-xl shadow hover:bg-indigo-700">關閉</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ===== js/components/StatsPanel.jsx =====
+
+
+
+
+
+
+function BarChart({ data, maxVal, colorFn, labelKey, valueKey, height = 120 }) {
+  const max = maxVal || Math.max(...data.map((d) => d[valueKey]), 1);
+  return (
+    <div className="flex items-end gap-1" style={{ height }}>
+      {data.map((d, i) => {
+        const h = Math.max((d[valueKey] / max) * (height - 20), 2);
+        return (
+          <div key={i} className="flex-1 flex flex-col items-center gap-1">
+            <span className="text-[10px] font-bold text-gray-500">{d[valueKey]}</span>
+            <div className="w-full rounded-t" style={{ height: h, backgroundColor: colorFn(d, i) }}></div>
+            <span className="text-[9px] text-gray-400 truncate w-full text-center">{d[labelKey]}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function DonutChart({ segments, size = 100 }) {
+  const total = segments.reduce((s, seg) => s + seg.value, 0) || 1;
+  let cumulative = 0;
+  const gradientParts = segments.map((seg) => {
+    const start = (cumulative / total) * 360;
+    cumulative += seg.value;
+    const end = (cumulative / total) * 360;
+    return `${seg.color} ${start}deg ${end}deg`;
+  });
+  const gradient = `conic-gradient(${gradientParts.join(', ')})`;
+
+  return (
+    <div className="relative" style={{ width: size, height: size }}>
+      <div className="w-full h-full rounded-full" style={{ background: gradient }}></div>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="bg-white rounded-full" style={{ width: size * 0.55, height: size * 0.55 }}></div>
+      </div>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="text-sm font-bold text-gray-700">{total}</span>
+      </div>
+    </div>
+  );
+}
+
+function TrendChart({ data, height = 100 }) {
+  if (data.length === 0) return <div className="text-gray-400 text-sm">尚無資料</div>;
+  const maxRate = 100;
+  const points = data.map((d, i) => {
+    const x = (i / (data.length - 1 || 1)) * 100;
+    const y = 100 - (d.rate / maxRate) * 100;
+    return `${x},${y}`;
+  }).join(' ');
+  const areaPoints = `0,100 ${points} 100,100`;
+
+  return (
+    <div>
+      <svg viewBox="0 0 100 100" className="w-full" style={{ height }} preserveAspectRatio="none">
+        <polygon points={areaPoints} fill="rgba(99,102,241,0.1)"/>
+        <polyline points={points} fill="none" stroke="#6366f1" strokeWidth="2" vectorEffect="non-scaling-stroke"/>
+      </svg>
+      <div className="flex justify-between text-[9px] text-gray-400 mt-1">
+        <span>{data[0]?.date?.slice(5) || ''}</span>
+        <span>{data[data.length - 1]?.date?.slice(5) || ''}</span>
+      </div>
+    </div>
+  );
+}
+
+function StatsPanel({ behaviors, course, onClose }) {
+  const students = useMemo(() => sortStudents(course.students), [course.students]);
+
+  const dailyTrend = useMemo(() => getDailyTrend(course, students, []), [course, students]);
+  const behaviorDist = useMemo(() => getBehaviorDistribution(course, students, behaviors), [course, students, behaviors]);
+  const hwStats = useMemo(() => getHomeworkStats(course, students), [course, students]);
+
+  const totalPresent = dailyTrend.reduce((s, d) => s + d.present, 0);
+  const totalAbsent = dailyTrend.reduce((s, d) => s + d.absent, 0);
+  const totalOther = dailyTrend.reduce((s, d) => s + d.other, 0);
+  const totalRecords = totalPresent + totalAbsent + totalOther || 1;
+  const avgRate = dailyTrend.length > 0 ? Math.round(dailyTrend.reduce((s, d) => s + d.rate, 0) / dailyTrend.length) : 100;
+
+  const attendanceSegments = [
+    { label: '出席', value: totalPresent, color: CHART_COLORS.PRESENT },
+    { label: '缺席', value: totalAbsent, color: CHART_COLORS.ABSENT },
+    { label: '其他', value: totalOther, color: CHART_COLORS.LATE },
+  ];
+
+  const hwSegments = [
+    { label: '已交', value: hwStats.DONE, color: '#22c55e' },
+    { label: '未交', value: hwStats.NOT_DONE, color: '#ef4444' },
+    { label: '補交', value: hwStats.LATE, color: '#eab308' },
+  ];
+
+  const topBehaviors = behaviorDist.filter((b) => b.count > 0).slice(0, 6);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white w-full max-w-2xl rounded-t-2xl md:rounded-2xl shadow-2xl m-0 md:m-4 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-2xl">
+          <h3 className="font-bold text-lg flex items-center gap-2">
+            <Icons.Monitor size={20} className="text-indigo-500"/> 課堂統計
+          </h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded-full"><Icons.X size={20}/></button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          {/* Overview Cards */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-indigo-50 rounded-xl p-3 text-center">
+              <div className="text-2xl font-bold text-indigo-600">{course.students.length}</div>
+              <div className="text-xs text-indigo-400">學生總數</div>
+            </div>
+            <div className="bg-green-50 rounded-xl p-3 text-center">
+              <div className="text-2xl font-bold text-green-600">{avgRate}%</div>
+              <div className="text-xs text-green-400">平均出勤率</div>
+            </div>
+            <div className="bg-amber-50 rounded-xl p-3 text-center">
+              <div className="text-2xl font-bold text-amber-600">{dailyTrend.length}</div>
+              <div className="text-xs text-amber-400">紀錄天數</div>
+            </div>
+          </div>
+
+          {/* Attendance Donut */}
+          <div className="bg-gray-50 rounded-xl p-4">
+            <h4 className="text-sm font-bold text-gray-600 mb-3">出缺席分佈</h4>
+            <div className="flex items-center gap-6">
+              <DonutChart segments={attendanceSegments} size={100}/>
+              <div className="flex-1 space-y-1.5">
+                {attendanceSegments.map((seg) => (
+                  <div key={seg.label} className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded" style={{ backgroundColor: seg.color }}></div>
+                      <span className="text-gray-600">{seg.label}</span>
+                    </div>
+                    <span className="font-bold text-gray-700">{seg.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Attendance Trend */}
+          <div className="bg-gray-50 rounded-xl p-4">
+            <h4 className="text-sm font-bold text-gray-600 mb-3">出勤率趨勢</h4>
+            {dailyTrend.length > 0 ? (
+              <TrendChart data={dailyTrend} height={80}/>
+            ) : (
+              <div className="text-gray-400 text-sm text-center py-4">尚無資料</div>
+            )}
+          </div>
+
+          {/* Behavior Distribution */}
+          <div className="bg-gray-50 rounded-xl p-4">
+            <h4 className="text-sm font-bold text-gray-600 mb-3">行為紀錄分佈</h4>
+            {topBehaviors.length > 0 ? (
+              <BarChart
+                data={topBehaviors}
+                maxVal={Math.max(...topBehaviors.map((b) => b.count))}
+                colorFn={(b) => b.bonus > 0 ? '#22c55e' : '#f97316'}
+                labelKey="icon"
+                valueKey="count"
+                height={100}
+              />
+            ) : (
+              <div className="text-gray-400 text-sm text-center py-4">尚無行為紀錄</div>
+            )}
+          </div>
+
+          {/* Homework Stats */}
+          <div className="bg-gray-50 rounded-xl p-4">
+            <h4 className="text-sm font-bold text-gray-600 mb-3">作業繳交統計</h4>
+            <div className="flex items-center gap-6">
+              {hwStats.DONE + hwStats.NOT_DONE + hwStats.LATE > 0 ? (
+                <React.Fragment>
+                  <DonutChart segments={hwSegments} size={80}/>
+                  <div className="flex-1 space-y-1.5">
+                    {hwSegments.map((seg) => (
+                      <div key={seg.label} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded" style={{ backgroundColor: seg.color }}></div>
+                          <span className="text-gray-600">{seg.label}</span>
+                        </div>
+                        <span className="font-bold text-gray-700">{seg.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </React.Fragment>
+              ) : (
+                <div className="text-gray-400 text-sm text-center py-2 w-full">尚無作業紀錄</div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t bg-gray-50 rounded-b-2xl">
+          <button onClick={onClose} className="w-full py-2.5 bg-indigo-600 text-white font-bold rounded-xl shadow hover:bg-indigo-700">關閉</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ===== js/components/Notification.jsx =====
+
+
+
+function Notification({ message }) {
+  if (!message) return null;
+  return (
+    <div className="fixed top-6 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-full shadow-lg z-[70] flex items-center gap-2">
+      <Icons.Check size={16} className="text-green-400"/>{message}
+    </div>
+  );
+}
+
+
+// ===== js/app.js =====
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function App() {
+  const {
+    courses, setCourses,
+    activeCourse, activeCourseId, setActiveCourseId,
+    periodConfig, setPeriodConfig,
+    scriptUrl, setScriptUrl,
+    behaviors, customBehaviors, addCustomBehavior, deleteCustomBehavior,
+    addNewCourse, deleteCourse,
+    importStudents, deleteStudent,
+    setStudentStatus, quickToggleStudent,
+    toggleStudentBehavior, setStudentHomework, setStudentNoteText,
+    updateActiveCourse,
+  } = useCourses();
+
+  const { notification, showToast } = useNotification();
+
+  const [currentDate, setCurrentDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [currentPeriod, setCurrentPeriod] = useState(() => (DEFAULT_PERIODS[1] || DEFAULT_PERIODS[0]));
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [modalType, setModalType] = useState(null);
+  const [recordPanelStudent, setRecordPanelStudent] = useState(null);
+  const [isScoreBoardOpen, setIsScoreBoardOpen] = useState(false);
+  const [isStatsPanelOpen, setIsStatsPanelOpen] = useState(false);
+  const [isBehaviorManagerOpen, setIsBehaviorManagerOpen] = useState(false);
+  const [inputText, setInputText] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+
+  const sortedStudents = useMemo(() => sortStudents(activeCourse.students), [activeCourse.students]);
+  const stats = useMemo(
+    () => getPeriodStats(activeCourse.students, activeCourse.records, currentDate, currentPeriod),
+    [activeCourse.students, activeCourse.records, currentDate, currentPeriod]
+  );
+
+  const handleQuickToggle = (studentId) => quickToggleStudent(studentId, currentDate, currentPeriod);
+
+  const handleModalSubmit = () => {
+    if (modalType !== 'CLOUD_SETUP' && !inputText.trim()) return;
+    if (modalType === 'IMPORT') {
+      importStudents(inputText);
+      showToast('已匯入學生');
+    } else if (modalType === 'COURSE') {
+      addNewCourse(inputText.split(/\n/).map((l) => l.trim()).filter((l) => l));
+      showToast('已新增課程');
+    } else if (modalType === 'PERIOD') {
+      setPeriodConfig(inputText.split(/\n/).map((l) => l.trim()).filter((l) => l));
+      showToast('節次已更新');
+    } else if (modalType === 'CLOUD_SETUP') {
+      setScriptUrl(inputText.trim());
+      showToast('連結已儲存');
+    }
+    setModalType(null);
+    setInputText('');
+  };
+
+  const handleBackupReport = async () => {
+    if (!scriptUrl) { setModalType('CLOUD_SETUP'); return; }
+    if (!window.confirm(`確定備份「${activeCourse.name} ${currentDate}」報表至雲端？`)) return;
+    setIsUploading(true);
+    try {
+      await backupReport(scriptUrl, activeCourse, currentDate, currentPeriod);
+      showToast('☁️ 報表已備份 (請查看試算表)');
+    } catch (e) { showToast('❌ 備份失敗'); }
+    finally { setIsUploading(false); }
+  };
+
+  const handleCopyReport = () => {
+    const report = generateReport(activeCourse, currentDate, currentPeriod);
+    copyToClipboard(report);
+    showToast('報表已複製 (隱私保護)');
+  };
+
+  return (
+    <div className="flex h-screen bg-gray-50 text-gray-800 font-sans overflow-hidden">
+      {/* Desktop Sidebar */}
+      <aside className="hidden md:flex flex-col w-72 bg-white border-r shadow-sm z-30">
+        <Sidebar
+          courses={courses} activeCourseId={activeCourseId} setActiveCourseId={setActiveCourseId}
+          periodConfig={periodConfig} scriptUrl={scriptUrl} setScriptUrl={setScriptUrl}
+          setPeriodConfig={setPeriodConfig} addNewCourse={addNewCourse} deleteCourse={deleteCourse}
+          setModalType={setModalType} setInputText={setInputText} setIsSidebarOpen={setIsSidebarOpen}
+          setCourses={setCourses} showToast={showToast}
+          onOpenScoreBoard={() => setIsScoreBoardOpen(true)}
+          onOpenStatsPanel={() => setIsStatsPanelOpen(true)}
+        />
+      </aside>
+
+      {/* Main Area */}
+      <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+        <Header
+          activeCourseName={activeCourse.name}
+          currentDate={currentDate} setCurrentDate={setCurrentDate}
+          currentPeriod={currentPeriod} setCurrentPeriod={setCurrentPeriod}
+          periodConfig={periodConfig} stats={stats}
+          setIsSidebarOpen={setIsSidebarOpen}
+        />
+
+        {/* Mobile Sidebar Drawer */}
+        {isSidebarOpen && (
+          <div className="fixed inset-0 z-50 flex md:hidden">
+            <div className="bg-white w-72 shadow-2xl flex flex-col h-full animate-slide-in">
+              <Sidebar
+                courses={courses} activeCourseId={activeCourseId} setActiveCourseId={setActiveCourseId}
+                periodConfig={periodConfig} scriptUrl={scriptUrl} setScriptUrl={setScriptUrl}
+                setPeriodConfig={setPeriodConfig} addNewCourse={addNewCourse} deleteCourse={deleteCourse}
+                setModalType={setModalType} setInputText={setInputText} setIsSidebarOpen={setIsSidebarOpen}
+                setCourses={setCourses} showToast={showToast}
+                onOpenScoreBoard={() => setIsScoreBoardOpen(true)}
+                onOpenStatsPanel={() => setIsStatsPanelOpen(true)}
+              />
+            </div>
+            <div className="flex-1 bg-black bg-opacity-30 backdrop-blur-sm" onClick={() => setIsSidebarOpen(false)}></div>
+          </div>
+        )}
+
+        {/* Student List */}
+        <main className="flex-1 overflow-y-auto p-3 lg:p-6 pb-24 bg-gray-50">
+          {sortedStudents.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-4">
+              <Icons.LayoutGrid size={48} className="mx-auto mb-2 text-gray-300"/>
+              <p>尚無學生資料</p>
+              <button onClick={() => setModalType('IMPORT')} className="px-6 py-2 bg-indigo-600 text-white rounded-full shadow-lg">匯入名單</button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {sortedStudents.map((s) => {
+                const record = getFullRecord(activeCourse, currentDate, currentPeriod, s.id);
+                return (
+                  <StudentCard
+                    key={s.id}
+                    behaviors={behaviors}
+                    student={s}
+                    record={record}
+                    onClick={() => handleQuickToggle(s.id)}
+                    onOpenRecord={() => setRecordPanelStudent(s)}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </main>
+
+        {/* Action Buttons */}
+        <div className="fixed bottom-6 right-6 z-10 flex gap-3">
+          <button disabled={isUploading} onClick={handleBackupReport}
+            className={`flex items-center gap-2 px-4 py-3 rounded-full shadow-xl font-bold text-white ${isUploading ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700'}`}>
+            {isUploading ? <span className="spinner"></span> : <Icons.CloudUpload size={18}/>}
+            <span className="hidden sm:inline">{isUploading ? '上傳中...' : '備份報表'}</span>
+          </button>
+          <button onClick={handleCopyReport}
+            className="flex items-center gap-2 bg-slate-800 text-white px-5 py-3 rounded-full shadow-xl hover:bg-slate-700 font-bold">
+            <Icons.ShieldCheck size={18} className="text-green-300"/>
+            <span className="hidden sm:inline">複製報表</span>
+            <span className="sm:hidden">複製</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Record Panel */}
+      {recordPanelStudent && (
+        <RecordPanel
+          behaviors={behaviors}
+          student={recordPanelStudent}
+          record={getFullRecord(activeCourse, currentDate, currentPeriod, recordPanelStudent.id)}
+          onSetStatus={(statusId) => {
+            setStudentStatus(recordPanelStudent.id, statusId, currentDate, currentPeriod);
+          }}
+          onToggleBehavior={(behaviorId) => {
+            toggleStudentBehavior(recordPanelStudent.id, currentDate, currentPeriod, behaviorId);
+          }}
+          onSetHomework={(status) => {
+            setStudentHomework(recordPanelStudent.id, currentDate, currentPeriod, status);
+          }}
+          onSetNote={(note) => {
+            setStudentNoteText(recordPanelStudent.id, currentDate, currentPeriod, note);
+          }}
+          onOpenBehaviorManager={() => setIsBehaviorManagerOpen(true)}
+          onDelete={() => {
+            deleteStudent(recordPanelStudent.id);
+            showToast('已移除學生');
+          }}
+          onClose={() => setRecordPanelStudent(null)}
+        />
+      )}
+
+      {/* Action Modals */}
+      <ActionModals
+        modalType={modalType}
+        inputText={inputText}
+        setInputText={setInputText}
+        onSubmit={handleModalSubmit}
+        onClose={() => { setModalType(null); setInputText(''); }}
+      />
+
+      {/* Score Board */}
+      {isScoreBoardOpen && (
+        <ScoreBoard behaviors={behaviors} course={activeCourse} onClose={() => setIsScoreBoardOpen(false)}/>
+      )}
+
+      {/* Stats Panel */}
+      {isStatsPanelOpen && (
+        <StatsPanel behaviors={behaviors} course={activeCourse} onClose={() => setIsStatsPanelOpen(false)}/>
+      )}
+
+      {/* Behavior Manager */}
+      {isBehaviorManagerOpen && (
+        <BehaviorManager
+          customBehaviors={customBehaviors}
+          addCustomBehavior={addCustomBehavior}
+          deleteCustomBehavior={deleteCustomBehavior}
+          onClose={() => setIsBehaviorManagerOpen(false)}
+        />
+      )}
+
+      {/* Notification */}
+      <Notification message={notification}/>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App/>);
+
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+# Build scripts (local use only)
+build-bundle.py
+check_bundle.py
+__pycache__/
+
+# Test file (index.html is the deployed version)
+test.html
+
+# Obsidian sync folder
+ObsidianSync/
+.obsidian/
