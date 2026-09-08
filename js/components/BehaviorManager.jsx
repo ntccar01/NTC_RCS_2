@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Icons } from './Icons.jsx';
-import { DEFAULT_BEHAVIORS } from '../config/constants.js';
 
 const EMOJI_LIST = ['📱','😴','🗣️','😵','💬','🍔','🚶','🙋','🤝','💡','📚','✏️','🎒','🖊️','😠','🫥','🎧','📖','💤','🎮'];
 
@@ -17,11 +16,33 @@ const COLOR_LIST = [
   'bg-cyan-50 text-cyan-600 border-cyan-200',
 ];
 
-export function BehaviorManager({ customBehaviors, addCustomBehavior, deleteCustomBehavior, onClose }) {
+export function BehaviorManager({ customBehaviors, addCustomBehavior, updateCustomBehavior, deleteCustomBehavior, onClose }) {
   const [label, setLabel] = useState('');
   const [icon, setIcon] = useState('📱');
   const [score, setScore] = useState(0);
   const [isBonus, setIsBonus] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+
+  const resetForm = () => {
+    setLabel(''); setIcon('📱'); setScore(0); setIsBonus(false); setEditingId(null);
+  };
+
+  const startEdit = (b) => {
+    setEditingId(b.id);
+    setLabel(b.label);
+    setIcon(b.icon);
+    setIsBonus(b.bonus > 0);
+    setScore(b.bonus > 0 ? b.bonus : Math.abs(b.penalty));
+  };
+
+  const handleSave = () => {
+    const trimmed = label.trim();
+    if (!trimmed) return;
+    const penalty = isBonus ? 0 : -Math.abs(score);
+    const bonus = isBonus ? Math.abs(score) : 0;
+    updateCustomBehavior(editingId, { label: trimmed, icon: icon || '⭐', penalty, bonus });
+    resetForm();
+  };
 
   const handleAdd = () => {
     const trimmed = label.trim();
@@ -41,19 +62,23 @@ export function BehaviorManager({ customBehaviors, addCustomBehavior, deleteCust
     }
   };
 
+  const isEditing = editingId !== null;
+
   return (
     <div className="fixed inset-0 z-[65] flex items-end md:items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm" onClick={onClose}>
       <div className="bg-white w-full max-w-md rounded-t-2xl md:rounded-2xl shadow-2xl m-0 md:m-4 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-2xl">
-          <h3 className="font-bold text-lg flex items-center gap-2"><Icons.Plus size={18}/> 管理行為項目</h3>
+          <h3 className="font-bold text-lg flex items-center gap-2">
+            {isEditing ? <><Icons.Edit3 size={18}/> 修改行為</> : <><Icons.Plus size={18}/> 管理行為項目</>}
+          </h3>
           <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded-full"><Icons.X size={20}/></button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-5">
-          {/* Add form */}
+          {/* Add / Edit form */}
           <div className="bg-gray-50 rounded-xl p-4 space-y-3">
-            <h4 className="text-sm font-bold text-gray-600 mb-1">新增行為</h4>
+            <h4 className="text-sm font-bold text-gray-600 mb-1">{isEditing ? '修改行為' : '新增行為'}</h4>
             <input
               type="text"
               value={label}
@@ -79,15 +104,22 @@ export function BehaviorManager({ customBehaviors, addCustomBehavior, deleteCust
               </select>
               <input type="number" min="1" max="20" value={Math.abs(score)}
                 onChange={(e) => setScore(parseInt(e.target.value) || 0)}
-                disabled={!isBonus && score === 0 ? false : false}
                 className="w-20 p-2 border rounded-lg text-sm text-center bg-white"
               />
               <span className="text-sm text-gray-500">分</span>
             </div>
-            <button onClick={handleAdd}
-              className="w-full py-2.5 bg-indigo-600 text-white font-bold rounded-xl shadow hover:bg-indigo-700">
-              ＋ 新增行為
-            </button>
+            <div className="flex gap-2">
+              {isEditing && (
+                <button onClick={resetForm}
+                  className="flex-1 py-2.5 bg-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-300">
+                  取消
+                </button>
+              )}
+              <button onClick={isEditing ? handleSave : handleAdd}
+                className="flex-1 py-2.5 bg-indigo-600 text-white font-bold rounded-xl shadow hover:bg-indigo-700">
+                {isEditing ? '儲存修改' : '＋ 新增行為'}
+              </button>
+            </div>
           </div>
 
           {/* Custom behaviors list */}
@@ -98,7 +130,7 @@ export function BehaviorManager({ customBehaviors, addCustomBehavior, deleteCust
             ) : (
               <div className="space-y-2">
                 {customBehaviors.map((b) => (
-                  <div key={b.id} className="flex items-center justify-between p-2.5 bg-white rounded-lg border">
+                  <div key={b.id} className={`flex items-center justify-between p-2.5 bg-white rounded-lg border ${editingId === b.id ? 'ring-2 ring-indigo-300' : ''}`}>
                     <div className="flex items-center gap-2">
                       <span className="text-lg">{b.icon}</span>
                       <span className="font-bold text-sm">{b.label}</span>
@@ -106,8 +138,12 @@ export function BehaviorManager({ customBehaviors, addCustomBehavior, deleteCust
                         {b.bonus > 0 ? '+' + b.bonus : (b.penalty < 0 ? b.penalty : '0')}
                       </span>
                     </div>
-                    <button onClick={() => deleteCustomBehavior(b.id)}
-                      className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg"><Icons.Trash2 size={16}/></button>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => startEdit(b)}
+                        className="p-1.5 text-gray-400 hover:text-indigo-500 rounded-lg"><Icons.Edit3 size={16}/></button>
+                      <button onClick={() => { if (editingId === b.id) resetForm(); deleteCustomBehavior(b.id); }}
+                        className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg"><Icons.Trash2 size={16}/></button>
+                    </div>
                   </div>
                 ))}
               </div>

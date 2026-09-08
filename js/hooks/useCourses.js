@@ -42,6 +42,10 @@ export function useCourses() {
     setCustomBehaviors((prev) => prev.filter((b) => b.id !== behaviorId));
   };
 
+  const updateCustomBehavior = (behaviorId, updates) => {
+    setCustomBehaviors((prev) => prev.map((b) => b.id === behaviorId ? { ...b, ...updates } : b));
+  };
+
   const updateActiveCourse = (updater) => {
     const cid = activeCourseIdRef.current;
     setCourses((prev) => prev.map((c) => (c.id === cid ? updater(c) : c)));
@@ -104,6 +108,7 @@ export function useCourses() {
     behaviors,
     customBehaviors,
     addCustomBehavior,
+    updateCustomBehavior,
     deleteCustomBehavior,
     addNewCourse,
     deleteCourse,

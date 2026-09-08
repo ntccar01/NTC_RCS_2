@@ -23,7 +23,7 @@ export function App() {
     activeCourse, activeCourseId, setActiveCourseId,
     periodConfig, setPeriodConfig,
     scriptUrl, setScriptUrl,
-    behaviors, customBehaviors, addCustomBehavior, deleteCustomBehavior,
+    behaviors, customBehaviors, addCustomBehavior, updateCustomBehavior, deleteCustomBehavior,
     addNewCourse, deleteCourse,
     importStudents, deleteStudent,
     setStudentStatus, quickToggleStudent,
@@ -225,6 +225,7 @@ export function App() {
         <BehaviorManager
           customBehaviors={customBehaviors}
           addCustomBehavior={addCustomBehavior}
+          updateCustomBehavior={updateCustomBehavior}
           deleteCustomBehavior={deleteCustomBehavior}
           onClose={() => setIsBehaviorManagerOpen(false)}
         />
