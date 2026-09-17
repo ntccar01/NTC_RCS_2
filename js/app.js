@@ -153,12 +153,12 @@ export function App() {
               <button onClick={() => setModalType('IMPORT')} className="px-6 py-2 bg-indigo-600 text-white rounded-full shadow-lg">匯入名單</button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            <div key={activeCourseId} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
               {sortedStudents.map((s) => {
                 const record = getFullRecord(activeCourse, currentDate, currentPeriod, s.id);
                 return (
                   <StudentCard
-                    key={s.id}
+                    key={`${activeCourseId}-${s.id}`}
                     behaviors={behaviors}
                     student={s}
                     record={record}
