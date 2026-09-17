@@ -25,7 +25,7 @@ export function App() {
     scriptUrl, setScriptUrl,
     behaviors, customBehaviors, addCustomBehavior, updateCustomBehavior, deleteCustomBehavior, hideDefaultBehavior, showDefaultBehavior, moveBehavior, syncBehaviors,
     addNewCourse, deleteCourse,
-    importStudents, deleteStudent,
+    importStudents, deleteStudent, updateStudentInfo,
     setStudentStatus, quickToggleStudent,
     toggleStudentBehavior, setStudentHomework, setStudentNoteText,
     updateActiveCourse,
@@ -233,6 +233,16 @@ useEffect(() => {
         <RecordPanel
           behaviors={behaviors}
           student={recordPanelStudent}
+          onUpdateStudent={(updates) => {
+  const result = updateStudentInfo(recordPanelStudent.id, updates);
+
+  if (result?.ok && result.student) {
+    setRecordPanelStudent(result.student);
+    showToast('✅ 學生資料已更新');
+  }
+
+  return result;
+}}
           record={getFullRecord(activeCourse, currentDate, currentPeriod, recordPanelStudent.id)}
           onSetStatus={(statusId) => {
             setStudentStatus(recordPanelStudent.id, statusId, currentDate, currentPeriod);
