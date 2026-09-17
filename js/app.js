@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { DEFAULT_PERIODS } from './config/constants.js';
 import { useCourses } from './hooks/useCourses.js';
 import { useNotification } from './hooks/useNotification.js';
@@ -32,7 +32,48 @@ export function App() {
   } = useCourses();
 
   const { notification, showToast } = useNotification();
+  const duplicateStudentIds = useMemo(() => {
+  const issues = [];
 
+  courses.forEach((course) => {
+    const idMap = new Map();
+
+    (course.students || []).forEach((student) => {
+      const id = String(student.id);
+
+      if (!idMap.has(id)) idMap.set(id, []);
+      idMap.get(id).push(student);
+    });
+
+    idMap.forEach((students, id) => {
+      if (students.length > 1) {
+        issues.push({
+          courseName: course.name,
+          id,
+          students,
+        });
+      }
+    });
+  });
+
+  return issues;
+}, [courses]);
+
+useEffect(() => {
+  if (duplicateStudentIds.length === 0) return;
+
+  console.error('❌ 偵測到重複 student.id：', duplicateStudentIds);
+
+  const first = duplicateStudentIds[0];
+  const studentText = first.students
+    .map((s) => `${s.number || '?'}號 ${s.name}`)
+    .join('、');
+
+  showToast(
+    `⚠️ 資料健檢異常：${first.courseName} 有重複學生 ID（${studentText}）`
+  );
+}, [duplicateStudentIds, showToast]);
+  
   const [currentDate, setCurrentDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [currentPeriod, setCurrentPeriod] = useState(() => (DEFAULT_PERIODS[1] || DEFAULT_PERIODS[0]));
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
