@@ -1,3 +1,10 @@
+export const generateStudentId = () => {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+
+  // 舊版瀏覽器備援
+  return `student-${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+};
+
 export const parseStudentList = (text) => {
   return text
     .split(/\n/)
@@ -6,7 +13,7 @@ export const parseStudentList = (text) => {
     .map((line) => {
       const m = line.match(/^(\d+)[.\s]+(.+)$/);
       return {
-        id: Date.now() + Math.random(),
+        id: generateStudentId(),
         number: m ? m[1] : '',
         name: m ? m[2] : line,
       };
@@ -21,7 +28,26 @@ export const removeStudent = (course, studentId) => ({
   students: course.students.filter((s) => s.id !== studentId),
 });
 
-export const addStudents = (course, newStudents) => ({
-  ...course,
-  students: [...course.students, ...newStudents],
-});
+export const addStudents = (course, newStudents) => {
+  const usedIds = new Set((course.students || []).map((s) => String(s.id)));
+
+  const safeStudents = newStudents.map((student) => {
+    let id = student.id;
+
+    while (id == null || usedIds.has(String(id))) {
+      id = generateStudentId();
+    }
+
+    usedIds.add(String(id));
+
+    return {
+      ...student,
+      id,
+    };
+  });
+
+  return {
+    ...course,
+    students: [...course.students, ...safeStudents],
+  };
+};
