@@ -130,6 +130,57 @@ export function useCourses() {
     updateActiveCourse((c) => removeStudent(c, studentId));
   };
 
+  const updateStudentInfo = (studentId, updates) => {
+  const name = String(updates.name ?? '').trim();
+  const number = String(updates.number ?? '').trim();
+
+  if (!name) {
+    return { ok: false, message: '姓名不能空白' };
+  }
+
+  if (!number) {
+    return { ok: false, message: '座號不能空白' };
+  }
+
+  const duplicatedNumber = activeCourse.students.some(
+    (s) =>
+      String(s.id) !== String(studentId) &&
+      String(s.number).trim() === number
+  );
+
+  if (duplicatedNumber) {
+    return {
+      ok: false,
+      message: `座號 ${number} 已經有其他學生使用`,
+    };
+  }
+
+  updateActiveCourse((course) => ({
+    ...course,
+    students: course.students.map((student) =>
+      String(student.id) === String(studentId)
+        ? {
+            ...student,
+            number,
+            name,
+            // student.id 絕對不修改
+          }
+        : student
+    ),
+  }));
+
+  return {
+    ok: true,
+    student: {
+      ...activeCourse.students.find(
+        (s) => String(s.id) === String(studentId)
+      ),
+      number,
+      name,
+    },
+  };
+};
+  
   const setStudentStatus = (studentId, statusId, date, period) => {
     updateActiveCourse((c) => setAttendance(c, date, period, studentId, statusId));
   };
@@ -188,6 +239,7 @@ export function useCourses() {
     deleteCourse,
     importStudents,
     deleteStudent,
+    updateStudentInfo,
     setStudentStatus,
     quickToggleStudent,
     toggleStudentBehavior,
