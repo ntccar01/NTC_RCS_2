@@ -12,7 +12,7 @@ import {
 import { createCourse, deleteCourseFromList, findCourse } from '../models/course.js';
 import { parseStudentList, addStudents, removeStudent } from '../models/student.js';
 import { setAttendance, quickToggle, toggleBehavior, setHomeworkStatus, setStudentNote } from '../models/record.js';
-import { syncBehaviorsUpload, syncBehaviorsDownload } from '../services/cloudSync.js';
+import { syncBehaviorsUpload } from '../services/cloudSync.js';
 
 export function useCourses() {
   const [courses, setCourses] = useState(() => loadCourses());
@@ -202,18 +202,19 @@ export function useCourses() {
   };
 
   const syncBehaviors = async (scriptUrl) => {
-    if (!scriptUrl) throw new Error('請先設定 GAS 連結');
-    const remote = await syncBehaviorsDownload(scriptUrl);
-    if (remote.result === 'error') throw new Error(remote.msg || '下載失敗');
-    if (remote.customBehaviors && Array.isArray(remote.customBehaviors)) {
-      setCustomBehaviors(remote.customBehaviors);
-    }
-    if (remote.hiddenDefaults && Array.isArray(remote.hiddenDefaults)) {
-      setHiddenDefaults(remote.hiddenDefaults);
-    }
-    await syncBehaviorsUpload(scriptUrl, customBehaviors, hiddenDefaults);
-    return { result: 'success', msg: '行為設定同步完成' };
+  if (!scriptUrl) throw new Error('請先設定 GAS 連結');
+
+  await syncBehaviorsUpload(
+    scriptUrl,
+    customBehaviors,
+    hiddenDefaults
+  );
+
+  return {
+    result: 'success',
+    msg: '目前行為設定已同步到雲端',
   };
+};
 
   return {
     courses,
