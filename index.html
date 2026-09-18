@@ -2181,6 +2181,116 @@ function App() {
   return issues;
 }, [courses]);
 
+const repairDuplicateStudentIds = () => {
+  if (duplicateStudentIds.length === 0) return;
+
+  const ok = window.confirm(
+    '偵測到重複學生 ID。\n\n系統將：\n1. 先備份目前資料\n2. 保留第一位學生原 ID\n3. 為其他重複學生建立新 ID\n4. 複製原有歷史紀錄到新 ID\n\n確定開始修復嗎？'
+  );
+
+  if (!ok) return;
+
+  // 先備份目前完整資料
+  const backupKey =
+    'rc_courses_v5_backup_before_auto_repair_' +
+    new Date().toISOString().replace(/[:.]/g, '-');
+
+  try {
+    localStorage.setItem(backupKey, JSON.stringify(courses));
+  } catch (e) {
+    console.warn('修復前備份失敗：', e);
+  }
+
+  let repairedCount = 0;
+
+  const repairedCourses = courses.map((course) => {
+    const seenIds = new Set();
+    const replacements = [];
+
+    const repairedStudents = (course.students || []).map((student) => {
+      const oldId = String(student.id);
+
+      // 第一位保留原 ID
+      if (!seenIds.has(oldId)) {
+        seenIds.add(oldId);
+        return student;
+      }
+
+      // 後續重複者改成新 ID
+      let newId = generateStudentId();
+
+      while (seenIds.has(String(newId))) {
+        newId = generateStudentId();
+      }
+
+      seenIds.add(String(newId));
+
+      replacements.push({
+        oldId,
+        newId: String(newId),
+      });
+
+      repairedCount++;
+
+      return {
+        ...student,
+        id: newId,
+      };
+    });
+
+    if (replacements.length === 0) {
+      return course;
+    }
+
+    // 複製舊 ID 的歷史紀錄給新 ID
+    const repairedRecords = {};
+
+    Object.entries(course.records || {}).forEach(([date, dayRecord]) => {
+      const newDayRecord = {};
+
+      Object.entries(dayRecord || {}).forEach(([period, periodRecord]) => {
+        const newPeriodRecord = {
+          ...(periodRecord || {}),
+        };
+
+        replacements.forEach(({ oldId, newId }) => {
+          if (
+            Object.prototype.hasOwnProperty.call(
+              newPeriodRecord,
+              oldId
+            )
+          ) {
+            const sourceRecord = newPeriodRecord[oldId];
+
+            newPeriodRecord[newId] =
+              typeof sourceRecord === 'object' &&
+              sourceRecord !== null
+                ? JSON.parse(JSON.stringify(sourceRecord))
+                : sourceRecord;
+          }
+        });
+
+        newDayRecord[period] = newPeriodRecord;
+      });
+
+      repairedRecords[date] = newDayRecord;
+    });
+
+    return {
+      ...course,
+      students: repairedStudents,
+      records: repairedRecords,
+    };
+  });
+
+  setCourses(repairedCourses);
+  setRecordPanelStudent(null);
+
+  showToast(
+    `✅ 已修復 ${repairedCount} 位重複 ID 學生，歷史紀錄已保留`
+  );
+};
+    
 useEffect(() => {
   if (duplicateStudentIds.length === 0) return;
 
@@ -2264,6 +2374,32 @@ useEffect(() => {
 
   return (
     <div className="flex h-screen bg-gray-50 text-gray-800 font-sans overflow-hidden">
+    {duplicateStudentIds.length > 0 && (
+  <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[80] w-[calc(100%-24px)] max-w-md bg-amber-50 border-2 border-amber-300 rounded-2xl shadow-2xl p-4">
+    <div className="font-bold text-amber-800 mb-2">
+      ⚠️ 偵測到學生資料異常
+    </div>
+
+    <div className="text-sm text-amber-700 mb-3">
+      {duplicateStudentIds[0].courseName} 有重複學生 ID：
+      {' '}
+      {duplicateStudentIds[0].students
+        .map((s) => `${s.number || '?'}號 ${s.name}`)
+        .join('、')}
+    </div>
+
+    <button
+      onClick={repairDuplicateStudentIds}
+      className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow"
+    >
+      🔧 一鍵修復重複學生 ID
+    </button>
+
+    <div className="text-xs text-amber-600 mt-2 text-center">
+      修復前會自動備份，既有點名與歷史紀錄會保留
+    </div>
+  </div>
+)}
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex flex-col w-72 bg-white border-r shadow-sm z-30">
         <Sidebar
